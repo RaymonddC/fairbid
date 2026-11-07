@@ -8,7 +8,8 @@ Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/)
 
 Working now:
 
-- Sign in with an email and password, or one click on a demo account
+- Create a buyer or seller account, sign in with an email and password, or one click on a demo account
+- Each buyer sees and runs only their own tenders; sellers see every open tender
 - Buyer dashboard with cash flow; seller quest board
 - Buyer steps: sealed bids, close, clarification inbox (in-app), delivered-cost compare with a blind score grid, award with the PayPal button, milestone payments
 - Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
