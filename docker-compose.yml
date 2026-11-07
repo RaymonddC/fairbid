@@ -1,0 +1,21 @@
+# Local Postgres only. Bound to 127.0.0.1 so it is never reachable from outside.
+services:
+  postgres:
+    image: postgres:16
+    container_name: fairbid-pg
+    environment:
+      POSTGRES_USER: fairbid
+      POSTGRES_PASSWORD: fairbid
+      POSTGRES_DB: fairbid
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - fairbid-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fairbid"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  fairbid-pg:

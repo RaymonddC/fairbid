@@ -1,0 +1,277 @@
+// FairBid schema. Money is integer cents plus a currency. Json columns hold
+// data that is always read as one unit and never filtered on its own.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenderStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  REVIEWING
+  CLARIFYING
+  PRICED
+  SCORED
+  AWARDED
+  IN_DELIVERY
+  COMPLETE
+  CANCELLED
+}
+
+enum BidLineKind {
+  goods
+  shipping
+  duty
+  vat
+  fees
+}
+
+enum ChannelKind {
+  inapp
+  whatsapp
+  telegram
+}
+
+enum FlagKind {
+  price_and_text
+}
+
+enum FlagReview {
+  unreviewed
+  confirmed
+  dismissed
+}
+
+enum MilestoneStatus {
+  pending
+  confirmed
+  captured
+}
+
+model Tender {
+  id                 String       @id @default(uuid())
+  title              String
+  needText           String
+  spec               Json
+  budgetCents        Int
+  currency           String       @default("EUR")
+  destinationCountry String
+  vatReclaimable     Boolean      @default(true)
+  closesAt           DateTime
+  status             TenderStatus @default(DRAFT)
+  createdAt          DateTime     @default(now())
+
+  criteria       Criterion[]
+  bids           Bid[]
+  clarifications Clarification[]
+  award          Award?
+  events         Event[]
+}
+
+model Criterion {
+  id        String @id @default(uuid())
+  tenderId  String
+  name      String
+  weightPct Int
+  rubric    String
+
+  tender Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  scores Score[]
+
+  @@index([tenderId])
+}
+
+model Seller {
+  id             String      @id
+  name           String
+  country        String
+  paypalEmail    String
+  channelKind    ChannelKind @default(inapp)
+  channelAddress String?
+
+  bids Bid[]
+}
+
+model Bid {
+  id           String    @id @default(uuid())
+  tenderId     String
+  sellerId     String
+  hsCode       String?
+  hsConfidence Decimal?  @db.Decimal(3, 2)
+  leadTimeDays Int
+  notes        String
+  // sha256 of the bid at submission, shown in the event log, so a sealed bid
+  // can be shown unchanged when it is opened.
+  sealedHash   String
+  submittedAt  DateTime  @default(now())
+  openedAt     DateTime?
+
+  tender  Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  seller  Seller    @relation(fields: [sellerId], references: [id])
+  lines   BidLine[]
+  scores  Score[]
+  replies Reply[]
+  flags   Flag[]    @relation("FlagBid")
+  pairedIn Flag[]   @relation("FlagPairedBid")
+  awards  Award[]
+
+  @@unique([tenderId, sellerId])
+  @@index([tenderId])
+}
+
+model BidLine {
+  id          String      @id @default(uuid())
+  bidId       String
+  kind        BidLineKind
+  amountCents Int
+  // "seller", or the tariff row and its "as of" date for computed lines.
+  source      String
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, kind])
+}
+
+model Clarification {
+  id       String   @id @default(uuid())
+  tenderId String
+  question String
+  sentTo   Json // seller ids, so "same question to every relevant bidder" is checkable
+  sentAt   DateTime @default(now())
+
+  tender  Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  replies Reply[]
+
+  @@index([tenderId])
+}
+
+model Reply {
+  id              String      @id @default(uuid())
+  clarificationId String
+  bidId           String
+  channel         ChannelKind
+  body            String
+  receivedAt      DateTime    @default(now())
+
+  clarification Clarification @relation(fields: [clarificationId], references: [id], onDelete: Cascade)
+  bid           Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@unique([clarificationId, bidId])
+}
+
+model Score {
+  id          String @id @default(uuid())
+  bidId       String
+  criterionId String
+  score       Int
+  reason      String
+
+  bid       Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  criterion Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, criterionId])
+}
+
+model Flag {
+  id           String     @id @default(uuid())
+  bidId        String
+  pairedBidId  String
+  kind         FlagKind
+  similarity   Decimal    @db.Decimal(4, 3)
+  evidence     Json
+  reason       String
+  reviewStatus FlagReview @default(unreviewed)
+
+  bid       Bid @relation("FlagBid", fields: [bidId], references: [id], onDelete: Cascade)
+  pairedBid Bid @relation("FlagPairedBid", fields: [pairedBidId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, pairedBidId])
+}
+
+model Award {
+  id        String   @id @default(uuid())
+  tenderId  String   @unique
+  bidId     String
+  holdCents Int
+  awardedAt DateTime @default(now())
+
+  tender        Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  bid           Bid            @relation(fields: [bidId], references: [id])
+  authorization Authorization?
+  milestones    Milestone[]
+}
+
+model Authorization {
+  id            String    @id @default(uuid())
+  awardId       String    @unique
+  paypalOrderId String    @unique
+  paypalAuthId  String?   @unique
+  amountCents   Int
+  expiresAt     DateTime?
+  status        String
+
+  award    Award     @relation(fields: [awardId], references: [id], onDelete: Cascade)
+  captures Capture[]
+}
+
+model Capture {
+  id              String  @id @default(uuid())
+  authorizationId String
+  milestoneId     String  @unique
+  paypalCaptureId String? @unique
+  amountCents     Int
+  finalCapture    Boolean @default(false)
+  status          String
+
+  authorization Authorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade)
+  milestone     Milestone     @relation(fields: [milestoneId], references: [id])
+}
+
+model Milestone {
+  id      String          @id @default(uuid())
+  awardId String
+  name    String
+  pct     Int
+  seq     Int
+  status  MilestoneStatus @default(pending)
+
+  award   Award    @relation(fields: [awardId], references: [id], onDelete: Cascade)
+  capture Capture?
+
+  @@unique([awardId, seq])
+}
+
+// Hash-chained per tender. See src/lib/audit.ts.
+model Event {
+  id       String   @id @default(uuid())
+  tenderId String
+  seq      Int
+  actor    String
+  kind     String
+  payload  Json
+  prevHash String
+  hash     String
+  at       DateTime @default(now())
+
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@unique([tenderId, seq])
+}
+
+model TariffRate {
+  id            String   @id @default(uuid())
+  hsPrefix      String
+  destination   String
+  dutyPct       Decimal  @db.Decimal(5, 2)
+  vatPct        Decimal  @db.Decimal(5, 2)
+  effectiveFrom DateTime
+  source        String
+
+  @@unique([hsPrefix, destination, effectiveFrom])
+}
