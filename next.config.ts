@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   // Cloud Run runs the traced standalone server, not all of node_modules.
   output: "standalone",
 
+  // Bids and tenders carry up to 4 resized photos (data URLs) through server actions.
+  experimental: {
+    serverActions: { bodySizeLimit: "3mb" },
+  },
+
   // CSP is not here: it needs a fresh nonce per request, so src/proxy.ts sets it.
   async headers() {
     return [

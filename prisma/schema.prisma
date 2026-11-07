@@ -66,6 +66,9 @@ model Tender {
   closesAt           DateTime
   status             TenderStatus @default(DRAFT)
   createdAt          DateTime     @default(now())
+  // Reference photos from the buyer, as resized JPEG data URLs. Prototype only:
+  // move to object storage before real use.
+  photos             Json         @default("[]")
 
   criteria       Criterion[]
   bids           Bid[]
@@ -111,6 +114,9 @@ model Bid {
   sealedHash   String
   submittedAt  DateTime  @default(now())
   openedAt     DateTime?
+  // Product photos, sealed with the price until the tender closes. Resized JPEG
+  // data URLs in the prototype.
+  photos       Json      @default("[]")
 
   tender  Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
   seller  Seller    @relation(fields: [sellerId], references: [id])

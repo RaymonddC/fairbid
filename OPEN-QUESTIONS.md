@@ -30,7 +30,6 @@ WhatsApp fits the Indonesian seller story. Telegram is free and a judge can try 
 ## Still to verify
 
 - Hold renewal: retest due on 10 Nov
-- Buyer approval, authorize and capture through this code, with real sandbox accounts
 - Twilio trial terms
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler

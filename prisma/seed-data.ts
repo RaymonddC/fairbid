@@ -22,11 +22,18 @@ export const DEMO_CRITERIA = [
   { name: "Completeness", weightPct: 15, rubric: "All fields filled and customs code confirmed." },
 ];
 
+// Sari's payee must be a real sandbox business account, or PayPal refuses the
+// order. Set SELLER_D_PAYPAL_EMAIL in .env; the example address is only a placeholder.
 export const DEMO_SELLERS = [
   { id: "seller-a", name: "Large exporter", country: "ID", paypalEmail: "seller-a@example.com" },
   { id: "seller-b", name: "Trader B", country: "VN", paypalEmail: "seller-b@example.com" },
   { id: "seller-c", name: "Trader C", country: "VN", paypalEmail: "seller-c@example.com" },
-  { id: "seller-d", name: "Sari's workshop", country: "ID", paypalEmail: "seller-d@example.com" },
+  {
+    id: "seller-d",
+    name: "Sari's workshop",
+    country: "ID",
+    paypalEmail: process.env.SELLER_D_PAYPAL_EMAIL || "seller-d@example.com",
+  },
 ];
 
 export const DEMO_BIDS = [
@@ -74,5 +81,13 @@ export const DEMO_TARIFFS = [
     vatPct: 19,
     effectiveFrom: new Date("2026-07-01T00:00:00Z"),
     source: "Demo assumption",
+  },
+  {
+    hsPrefix: "6302",
+    destination: "US",
+    dutyPct: 6.7,
+    vatPct: 0,
+    effectiveFrom: new Date("2026-07-01T00:00:00Z"),
+    source: "Demo assumption: no import VAT in the US",
   },
 ];

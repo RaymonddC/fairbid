@@ -69,3 +69,12 @@ export function isOverBudget(landed: LandedCost, budgetCents: number): boolean {
   // The buyer sets the budget excluding VAT, so it compares against the reclaimed figure.
   return landed.deliveredReclaimedCents > budgetCents;
 }
+
+/** What PayPal holds for the seller at award. The offer is delivered at place
+ * (DAP): the seller is paid for goods and shipping, while EU duty, import VAT and
+ * the customs broker's fees are the buyer's border costs (OPEN-QUESTIONS.md,
+ * "What does the hold cover?", option A). Delivered cost still includes them,
+ * so bids are compared on what the buyer really pays. */
+export function holdCents(landed: LandedCost): number {
+  return landed.goodsCents + landed.shippingCents;
+}

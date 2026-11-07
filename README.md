@@ -8,13 +8,16 @@ Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/)
 
 Working now:
 
-- Sign-in with demo accounts, quest board, tender page with sealed bids
+- Sign-in with demo accounts; buyer dashboard and seller tender list
+- Buyer steps: sealed bids, close, clarification inbox (in-app), delivered-cost compare with a blind score grid, award with the PayPal button, milestone payments
+- Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
+- Post a tender (scripted draft), Reset demo
 - Postgres schema, migration, and a repeat-safe demo seed
 - Landed-cost engine, checked against the demo tender's published figures
 - Tender state machine and hash-chained event log
 - PayPal client with the seller as payee, and a webhook route
 
-Not built yet: the AI roles, clarification inbox, results grid, award screen, seller agents over MCP. The PayPal sandbox has issued a token and accepted an order with its full breakdown. Buyer approval, authorize and capture still need testing through this code.
+Not built yet: the AI roles (questions and the handmade score come from `src/lib/review-fixture.ts`), WhatsApp and Telegram, seller agents over MCP. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
 
 ## Run it
 
