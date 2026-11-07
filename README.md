@@ -14,7 +14,7 @@ Working now:
 - Tender state machine and hash-chained event log
 - PayPal client with the seller as payee, and a webhook route
 
-Not built yet: the AI roles, clarification inbox, results grid, award screen, seller agents over MCP. The PayPal client is unit tested against a fake server and has not yet run against the live sandbox.
+Not built yet: the AI roles, clarification inbox, results grid, award screen, seller agents over MCP. The PayPal sandbox has issued a token and accepted an order with its full breakdown. Buyer approval, authorize and capture still need testing through this code.
 
 ## Run it
 

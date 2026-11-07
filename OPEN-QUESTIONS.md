@@ -13,7 +13,7 @@ This sets the PayPal order's line items.
 
 ## Which database on GCP?
 
-`DATABASE_URL` works with either. Cloud SQL matches the team's last project but bills while idle and needs a proxy for migrations from CI. A hosted Postgres with a free tier reaches CI directly.
+`DATABASE_URL` works with either. The setup script assumes a hosted Postgres with a free tier, which CI can reach directly. Cloud SQL matches the team's last project, but it bills while idle and would need a proxy step for migrations from CI.
 
 ## Which GCP project?
 
@@ -30,7 +30,7 @@ WhatsApp fits the Indonesian seller story. Telegram is free and a judge can try 
 ## Still to verify
 
 - Hold renewal: retest due on 10 Nov
-- Tax, shipping and handling in the order breakdown, against the real sandbox
+- Buyer approval, authorize and capture through this code, with real sandbox accounts
 - Twilio trial terms
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler
