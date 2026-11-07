@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "../generated/prisma/client";
 import { DEMO_BIDS, DEMO_CRITERIA, DEMO_SELLERS, DEMO_TARIFFS, DEMO_TENDER } from "../../prisma/seed-data";
 import { DEMO_PHOTOS } from "../../prisma/demo-photos";
+import { ensureDemoAccounts } from "./accounts";
 import { ensureDemoHistory } from "./demo-history";
 
 const HOUR = 60 * 60 * 1000;
@@ -33,6 +34,7 @@ export async function resetDemoTender(db: PrismaClient): Promise<void> {
   }
   // Earlier, finished tenders for the cash-flow history. Created once, never reset.
   await ensureDemoHistory(db);
+  await ensureDemoAccounts(db);
 
   const now = Date.now();
   await db.tender.deleteMany({ where: { id: DEMO_TENDER.id } });

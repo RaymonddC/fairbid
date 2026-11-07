@@ -1,102 +1,91 @@
-import { DEMO_USERS } from "@/lib/auth";
+import { LoginForm } from "@/components/LoginForm";
+import { LogoMark } from "@/components/Logo";
 import { Pill } from "@/components/ui";
+import { DEMO_EMAILS, DEMO_PASSWORD } from "@/lib/accounts";
+import { DEMO_USERS } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 import { signInAction } from "./actions";
 
-export const metadata = { title: "Choose a demo account · FairBid" };
+export const metadata = { title: "Sign in · FairBid" };
 
-const extra: Record<string, { tries: string[]; cta: string; primary: boolean }> = {
-  "buyer-anna": {
-    tries: [
-      "Open the sealed bids and read the AI's questions to sellers",
-      "Compare every bid at its delivered cost in Berlin",
-      "Award the winner and pay step by step through a PayPal hold",
-    ],
-    cta: "Continue as Anna",
-    primary: true,
-  },
-  "seller-sari": {
-    tries: [
-      "Confirm the suggested customs code for the napkins",
-      "See the delivered price the buyer will compare before you bid",
-      "Answer the buyer's question; your price stays locked",
-    ],
-    cta: "Continue as Sari",
-    primary: false,
-  },
+const tries: Record<string, string> = {
+  "buyer-anna": "Compare sealed bids at delivered cost, award, and pay step by step through a PayPal hold.",
+  "seller-sari": "Bid on open tenders from the quest board, answer questions, and see what you are paid.",
 };
 
-const flow = ["Sealed bids", "AI questions", "Delivered cost", "PayPal hold and pay"];
+const flow = ["Sealed bids", "Questions", "Delivered cost", "PayPal hold and pay"];
 
-// Entry point for judges: pick the buyer or the seller, no password (lib/auth.ts).
+// Two ways in: an email and password, or one click on a demo account (lib/auth.ts).
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  const { next } = await searchParams;
+  const next = safeNext((await searchParams).next);
   return (
-    <div className="mx-auto grid max-w-[880px] gap-10 py-4 sm:py-10">
+    <div className="mx-auto grid max-w-[960px] gap-10 py-4 sm:py-8">
       <div className="grid justify-items-start gap-3">
-        <Pill tone="ok" dot>
-          Demo in the PayPal sandbox, no real money
-        </Pill>
-        <h1 className="text-[32px] leading-[1.1] tracking-[-0.03em] sm:text-[40px]">Choose who you are for this demo</h1>
-        <p className="max-w-[60ch] text-[15px] text-muted">
-          FairBid runs a fair tender across borders: every bid is compared at what it really costs delivered, and PayPal holds the money
-          until the goods arrive. Try it as the hotel buying, or as the workshop selling.
+        <div className="flex items-center gap-3">
+          <LogoMark size={40} />
+          <Pill tone="ok" dot>
+            PayPal sandbox, no real money
+          </Pill>
+        </div>
+        <h1 className="text-[32px] leading-[1.1] tracking-[-0.03em] sm:text-[40px]">Sign in to FairBid</h1>
+        <p className="max-w-[62ch] text-[15px] text-muted">
+          Fair tenders across borders: every bid is compared at what it really costs delivered, and PayPal holds the money until the goods
+          arrive.
         </p>
       </div>
 
-      <ul className="grid gap-4 sm:grid-cols-2">
-        {DEMO_USERS.map((u) => {
-          const e = extra[u.id] ?? { tries: [], cta: `Continue as ${u.name}`, primary: false };
-          return (
-            <li key={u.id}>
-              <article className={`notice grid h-full content-between gap-6 rounded-2xl p-6 ${e.primary ? "accent-edge" : ""}`}>
-                <div className="grid gap-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`grid h-11 w-11 place-items-center rounded-full text-sm font-semibold ${
-                          e.primary ? "bg-dye text-canvas" : "bg-dye-soft text-dye"
-                        }`}
-                        aria-hidden="true"
-                      >
-                        {u.name[0]}
-                      </span>
-                      <div className="grid leading-tight">
-                        <h2 className="text-lg">{u.name}</h2>
-                        <span className="text-sm capitalize text-muted">{u.role}</span>
-                      </div>
-                    </div>
-                    {e.primary && <Pill tone="dye">Start here</Pill>}
-                  </div>
-                  <p className="text-sm text-muted">{u.detail}.</p>
-                  <div className="grid gap-2">
-                    <h3 className="text-xs font-medium text-faint">What you can try</h3>
-                    <ul className="grid gap-2 text-sm">
-                      {e.tries.map((t) => (
-                        <li key={t} className="flex gap-2.5">
-                          <Check />
-                          {t}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="notice grid content-start gap-5 rounded-2xl p-6" aria-labelledby="signin-title">
+          <h2 id="signin-title" className="text-lg">
+            Sign in with email
+          </h2>
+          <LoginForm next={next} demoEmail={DEMO_EMAILS["buyer-anna"]} demoPassword={DEMO_PASSWORD} />
+        </section>
+
+        <section className="grid content-start gap-3" aria-labelledby="demo-title">
+          <div className="grid gap-0.5">
+            <h2 id="demo-title" className="text-lg">
+              Or try a demo account
+            </h2>
+            <p className="text-sm text-muted">One click, no password. Sample people and illustrative numbers.</p>
+          </div>
+          <ul className="grid gap-3">
+            {DEMO_USERS.map((u, i) => (
+              <li key={u.id}>
                 <form action={signInAction}>
                   <input type="hidden" name="userId" value={u.id} />
-                  <input type="hidden" name="next" value={next ?? "/"} />
+                  <input type="hidden" name="next" value={next} />
                   <button
                     type="submit"
-                    className={`inline-flex min-h-10 w-full items-center justify-center rounded-lg px-3.5 text-sm font-medium transition-colors ${
-                      e.primary ? "bg-dye text-canvas hover:bg-dye-hover" : "border border-line-strong bg-surface text-ink hover:bg-canvas"
-                    }`}
+                    className={`notice group grid w-full gap-1 rounded-xl p-4 text-left transition-colors hover:border-dye ${i === 0 ? "accent-edge" : ""}`}
                   >
-                    {e.cta}
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-3">
+                        <span
+                          className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold ${i === 0 ? "bg-dye text-canvas" : "bg-dye-soft text-dye"}`}
+                          aria-hidden="true"
+                        >
+                          {u.name[0]}
+                        </span>
+                        <span className="grid leading-tight">
+                          <span className="font-medium">
+                            Continue as {u.name}
+                          </span>
+                          <span className="text-xs capitalize text-muted">
+                            {u.role}, {u.detail}
+                          </span>
+                        </span>
+                      </span>
+                      {i === 0 && <Pill tone="dye">Start here</Pill>}
+                    </span>
+                    <span className="pl-[52px] text-sm text-muted">{tries[u.id]}</span>
                   </button>
                 </form>
-              </article>
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <section className="grid gap-4" aria-labelledby="flow-title">
         <h2 id="flow-title" className="text-sm text-muted">
@@ -116,18 +105,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           ))}
         </ol>
       </section>
-
-      <p className="border-t border-line pt-5 text-sm text-muted">
-        Sample people and illustrative numbers. The buyer approves the hold with a PayPal sandbox personal account.
-      </p>
     </div>
-  );
-}
-
-function Check() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="mt-0.5 shrink-0 text-ok" aria-hidden="true">
-      <path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

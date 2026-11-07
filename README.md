@@ -8,7 +8,8 @@ Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/)
 
 Working now:
 
-- Sign-in with demo accounts; buyer dashboard and seller tender list
+- Sign in with an email and password, or one click on a demo account
+- Buyer dashboard with cash flow; seller quest board
 - Buyer steps: sealed bids, close, clarification inbox (in-app), delivered-cost compare with a blind score grid, award with the PayPal button, milestone payments
 - Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
 - Post a tender (scripted draft), Reset demo
@@ -33,7 +34,7 @@ npm run db:seed
 npm run dev
 ```
 
-Set `SESSION_SECRET` in `.env` first (`openssl rand -base64 32`), then open http://localhost:3000 and pick a demo account.
+Set `SESSION_SECRET` in `.env` first (`openssl rand -base64 32`), then open http://localhost:3000. Pick a demo account, or sign in with `anna@fairbid.demo` (buyer) or `sari@fairbid.demo` (seller) and the password `fairbid-demo` (set `DEMO_PASSWORD` to change it).
 
 ## Check it
 

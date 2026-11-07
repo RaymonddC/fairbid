@@ -253,6 +253,20 @@ model Milestone {
   @@unique([awardId, seq])
 }
 
+// People who sign in with an email and password. The demo accounts are seeded
+// here too, with the same ids as DEMO_USERS, so either way of signing in lands
+// on the same account. Only a scrypt hash of the password is stored.
+model Account {
+  id           String   @id
+  email        String   @unique
+  name         String
+  role         String // "buyer" | "seller"
+  sellerId     String?
+  detail       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
 // Hash-chained per tender. See src/lib/audit.ts.
 model Event {
   id       String   @id @default(uuid())
