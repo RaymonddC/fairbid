@@ -51,12 +51,31 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      PROXY_VERSION: v2.14.1
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      # The database takes no direct connections, so migrations go through the
+      # Cloud SQL proxy, which signs in as the deployer.
+      - name: Start Cloud SQL proxy
+        run: |
+          curl -fsSL -o cloud-sql-proxy \
+            "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${PROXY_VERSION}/cloud-sql-proxy.linux.amd64"
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 "${{ vars.SQL_CONNECTION }}" > proxy.log 2>&1 &
+          for _ in $(seq 30); do
+            grep -q "ready for new connections" proxy.log && exit 0
+            sleep 1
+          done
+          cat proxy.log
+          exit 1
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy
@@ -92,6 +111,7 @@ jobs:
             --allow-unauthenticated
             --service-account=fairbid-run@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
             --min-instances=0 --max-instances=3
+            --add-cloudsql-instances=${{ vars.SQL_CONNECTION }}
             --set-env-vars=PAYPAL_ENV=sandbox,PAYPAL_CLIENT_ID=${{ vars.PAYPAL_CLIENT_ID }},PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }}
             --set-secrets=DATABASE_URL=fairbid-database-url:latest,SESSION_SECRET=fairbid-session-secret:latest,PAYPAL_SECRET=fairbid-paypal-secret:latest
       - run: echo "Deployed to ${{ steps.deploy.outputs.url }}"

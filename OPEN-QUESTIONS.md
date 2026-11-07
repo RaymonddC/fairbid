@@ -11,14 +11,6 @@ The deck holds EUR 2,880, the full delivered cost. Duty and import VAT normally 
 
 This sets the PayPal order's line items.
 
-## Which database on GCP?
-
-`DATABASE_URL` works with either. The setup script assumes a hosted Postgres with a free tier, which CI can reach directly. Cloud SQL matches the team's last project, but it bills while idle and would need a proxy step for migrations from CI.
-
-## Which GCP project?
-
-A separate project keeps a mistake here away from any other running service.
-
 ## How far does the seller agent go?
 
 Minimal is an MCP endpoint and scripted bots. Full is bots that price with their own LLM. Minimal is enough for the Agentic Commerce story.

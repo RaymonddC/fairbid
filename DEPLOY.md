@@ -1,16 +1,16 @@
 # Deploy
 
-The app runs on Google Cloud Run. Pushes to `main` deploy through `.github/workflows/deploy.yml`. Until setup is done, that workflow skips cleanly.
+The app runs on Google Cloud Run with a Cloud SQL Postgres database. Pushes to `main` deploy through `.github/workflows/deploy.yml`. Until setup is done, that workflow skips cleanly.
 
 ## One-time setup
 
 You need:
 
-- A GCP project with billing enabled. Cloud Run requires billing even when usage stays inside the free tier
-- A Postgres database reachable from the internet, for example a free [Neon](https://neon.tech) project
+- A GCP project of its own, with billing enabled
+- An account that owns the project, and `gh` signed in to GitHub
 - The PayPal sandbox client id and secret
 
-Open [Cloud Shell](https://shell.cloud.google.com) signed in to your own account, then run:
+From [Cloud Shell](https://shell.cloud.google.com), or any machine with `gcloud` and `gh`:
 
 ```bash
 gh auth login
@@ -19,7 +19,9 @@ cd fairbid
 PROJECT_ID=your-project-id bash deploy/setup-gcp.sh
 ```
 
-The script asks for the three values and hides the secrets as you type. It enables the APIs, creates the service accounts and the GitHub sign-in limited to this repo, stores the secrets, and starts the first deploy with the demo data. It is safe to re-run.
+The script asks for the PayPal values, hiding the secret as you type, or reads `PAYPAL_CLIENT_ID` and `PAYPAL_SECRET` from the environment. It enables the APIs, creates the database, the service accounts and the GitHub sign-in limited to this repo, stores the secrets, and starts the first deploy with the demo data. Creating the database takes several minutes. It is safe to re-run.
+
+The database costs about US$10 a month even when nobody visits. Delete the `fairbid-db` instance once judging is over.
 
 ## After the first deploy
 
