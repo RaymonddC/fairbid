@@ -105,6 +105,7 @@ export async function ensureDemoHistory(db: PrismaClient): Promise<void> {
         closesAt: new Date(s.closedAt),
         createdAt: new Date(new Date(s.closedAt).getTime() - 7 * 86_400_000),
         status: "COMPLETE",
+        buyerId: "buyer-anna",
         criteria: { create: CRITERIA },
         bids: {
           create: [s.winner, s.loser].map((b) => ({

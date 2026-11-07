@@ -15,7 +15,7 @@ export default async function Page({
   if (!user) redirect("/login");
   if (user.role !== "buyer") redirect(`/tender/${id}`);
   const t = await tenderView(id);
-  if (!t) notFound();
+  if (!t || t.buyerId !== user.id) notFound();
   const { bid } = await searchParams;
   return <AwardPay t={t} chosenBidId={bid} />;
 }

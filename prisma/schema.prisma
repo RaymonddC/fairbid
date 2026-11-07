@@ -66,6 +66,8 @@ model Tender {
   closesAt           DateTime
   status             TenderStatus @default(DRAFT)
   createdAt          DateTime     @default(now())
+  // The buyer account that posted it. Only that buyer sees and runs the tender.
+  buyerId            String?
   // Reference photos from the buyer, as resized JPEG data URLs. Prototype only:
   // move to object storage before real use.
   photos             Json         @default("[]")
@@ -75,6 +77,8 @@ model Tender {
   clarifications Clarification[]
   award          Award?
   events         Event[]
+
+  @@index([buyerId])
 }
 
 model Criterion {

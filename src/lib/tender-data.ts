@@ -233,6 +233,7 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
 
   return {
     id: t.id,
+    buyerId: t.buyerId,
     title: t.title,
     needText: t.needText,
     spec: specOf(t.spec),
@@ -308,8 +309,8 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
 }
 
 /** Every tender, newest first, with the money figures the dashboard shows. */
-export async function listTenders(): Promise<TenderSummary[]> {
-  const tenders = await db.tender.findMany({ orderBy: { createdAt: "desc" }, select: { id: true } });
+export async function listTenders(buyerId?: string): Promise<TenderSummary[]> {
+  const tenders = await db.tender.findMany({ where: buyerId ? { buyerId } : {}, orderBy: { createdAt: "desc" }, select: { id: true } });
   const views = await Promise.all(tenders.map((t) => getTenderView(t.id)));
   return views
     .filter((v): v is TenderView => !!v)

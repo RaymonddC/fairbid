@@ -24,7 +24,7 @@ function buildCsp(nonce: string): string {
 }
 
 // Reached by machines or before login. Each one checks its own credentials.
-const PUBLIC_PATH = /^\/(login$|api\/(health|ready|mcp|webhooks)(\/|$))/;
+const PUBLIC_PATH = /^\/(login$|register$|api\/(health|ready|mcp|webhooks)(\/|$))/;
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

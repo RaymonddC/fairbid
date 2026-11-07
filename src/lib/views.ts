@@ -116,6 +116,7 @@ export interface AwardView {
 
 export interface TenderView {
   id: string;
+  buyerId: string | null;
   title: string;
   needText: string;
   spec: Spec;

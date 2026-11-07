@@ -16,6 +16,6 @@ export default async function TenderPage({ params }: { params: Promise<{ id: str
   }
 
   const t = await tenderView(id);
-  if (!t) notFound();
+  if (!t || t.buyerId !== user.id) notFound();
   return <SealedBids t={t} />;
 }

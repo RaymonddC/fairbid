@@ -21,7 +21,7 @@ export default async function TenderLayout({ children, params }: { children: Rea
   if (user.role === "seller") return children;
 
   const t = await tenderView(id);
-  if (!t) notFound();
+  if (!t || t.buyerId !== user.id) notFound();
   const eur = moneyFor(t.currency);
   const photo = t.photos[0] ?? t.bids.find((b) => b.photos.length)?.photos[0];
   // Warn when a hold is close to expiry with money still unpaid: after it, PayPal cannot capture.

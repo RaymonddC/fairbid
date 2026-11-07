@@ -5,18 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { signInAction, signOutAction } from "@/app/login/actions";
 import { DEMO_USERS, type User } from "@/lib/auth";
+import { Avatar } from "./Avatar";
 import { LogoMark } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 
 type Tab = { href: string; label: string; active: (path: string) => boolean };
-
-const initialsOf = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join("") || "?";
 
 /**
  * App navigation, one row on desktop: [logo] [page links] ... [sandbox] [theme] | [profile].
@@ -129,7 +122,7 @@ function AccountMenu({ user }: { user: User }) {
         aria-label={`Account: ${user.name}, ${user.role}`}
         className="flex h-10 items-center gap-2.5 rounded-full pl-1 pr-2 text-sm transition-colors hover:bg-surface"
       >
-        <Avatar initials={initialsOf(user.name)} on />
+        <Avatar id={user.id} size={32} />
         <span className="hidden text-left leading-tight sm:grid">
           <span className="font-medium text-ink">{user.name}</span>
           <span className="text-[11px] capitalize text-faint">{user.role}</span>
@@ -152,7 +145,7 @@ function AccountMenu({ user }: { user: User }) {
                   aria-current={on ? "true" : undefined}
                   className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${on ? "bg-canvas" : "hover:bg-canvas"}`}
                 >
-                  <Avatar initials={initialsOf(p.name)} on={on} />
+                  <Avatar id={p.id} size={32} ring={on} />
                   <span className="grid min-w-0 flex-1 leading-tight">
                     <span className="truncate text-sm font-medium text-ink">{p.name}</span>
                     <span className="truncate text-xs text-faint">
@@ -179,17 +172,6 @@ function AccountMenu({ user }: { user: User }) {
         </div>
       )}
     </div>
-  );
-}
-
-function Avatar({ initials, on }: { initials: string; on: boolean }) {
-  return (
-    <span
-      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${on ? "bg-dye text-canvas" : "bg-line text-muted"}`}
-      aria-hidden="true"
-    >
-      {initials}
-    </span>
   );
 }
 

@@ -39,7 +39,11 @@ export const dayTime = (iso: string) =>
     timeZone: "Europe/Berlin",
   });
 
-export const countryName = (code: string) => ({ ID: "Indonesia", VN: "Vietnam", DE: "Germany", US: "United States" })[code] ?? code;
+export const countryName = (code: string) =>
+  ({ ID: "Indonesia", VN: "Vietnam", TH: "Thailand", PH: "Philippines", MY: "Malaysia", IN: "India", DE: "Germany", US: "United States" })[code] ?? code;
 
 /** Customs confidence as people read it: 0.94 → "94% sure". */
 export const sure = (confidence: number) => `${Math.round(confidence * 100)}% sure`;
+
+/** Countries a seller can register from in the prototype. */
+export const SELLER_COUNTRIES = ["ID", "VN", "TH", "PH", "MY", "IN"] as const;

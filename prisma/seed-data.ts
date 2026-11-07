@@ -13,6 +13,7 @@ export const DEMO_TENDER = {
   currency: "EUR",
   destinationCountry: "DE",
   vatReclaimable: true,
+  buyerId: "buyer-anna",
 };
 
 export const DEMO_CRITERIA = [

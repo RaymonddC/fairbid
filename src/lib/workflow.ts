@@ -22,6 +22,12 @@ import { tariffFor } from "./tender-data";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DESTINATIONS } from "./format";
 
+/** Only the buyer who posted a tender may run it. Throws for anyone else. */
+export async function assertOwner(tenderId: string, buyerId: string) {
+  const t = await db.tender.findUnique({ where: { id: tenderId }, select: { buyerId: true } });
+  if (!t || t.buyerId !== buyerId) throw new StepError("This tender belongs to another buyer.");
+}
+
 export type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export class StepError extends Error {}
@@ -479,6 +485,7 @@ export async function publishTender(input: TenderInput, actor: string): Promise<
       vatReclaimable: true,
       closesAt: new Date(Date.now() + input.closesInDays * 86_400_000),
       status: "DRAFT",
+      buyerId: actor,
       photos,
       criteria: { create: input.criteria },
     },

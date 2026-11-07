@@ -19,13 +19,13 @@ export const metadata = { title: "Dashboard · FairBid" };
 export default async function Home() {
   const user = await getUser();
   if (!user) redirect("/login");
-  return user.role === "buyer" ? <BuyerHome name={user.name} /> : <SellerHome sellerId={user.sellerId!} name={user.name} />;
+  return user.role === "buyer" ? <BuyerHome name={user.name} buyerId={user.id} /> : <SellerHome sellerId={user.sellerId!} name={user.name} />;
 }
 
 // ── Buyer ────────────────────────────────────────────────────────────────────
 
-async function BuyerHome({ name }: { name: string }) {
-  const cf = await buyerCashflow();
+async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
+  const cf = await buyerCashflow(buyerId);
   const active = cf.tenders.filter((t) => t.status !== "COMPLETE" && t.status !== "CANCELLED");
   const done = cf.tenders.filter((t) => t.status === "COMPLETE");
   // One figure per currency in use, never added across currencies: "€3,380 + $500".

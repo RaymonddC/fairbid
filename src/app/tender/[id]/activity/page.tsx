@@ -61,7 +61,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!user) redirect("/login");
   if (user.role !== "buyer") redirect(`/tender/${id}`);
   const t = await tenderView(id);
-  if (!t) notFound();
+  if (!t || t.buyerId !== user.id) notFound();
 
   const events = await getEvents(id);
   const check = verifyChain(events);

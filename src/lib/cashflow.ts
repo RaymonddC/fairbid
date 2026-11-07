@@ -48,11 +48,13 @@ interface Paid {
   paypalAuthId?: string;
 }
 
-async function transactions(sellerId?: string): Promise<Transaction[]> {
+async function transactions(filter: { sellerId?: string; buyerId?: string }): Promise<Transaction[]> {
+  const { sellerId, buyerId } = filter;
   const events = await db.event.findMany({
     where: {
       kind: { in: ["award.authorized", "milestone.paid"] },
       ...(sellerId ? { tender: { award: { bid: { sellerId } } } } : {}),
+      ...(buyerId ? { tender: { buyerId } } : {}),
     },
     orderBy: { at: "asc" },
     include: { tender: { select: { title: true, currency: true, award: { select: { bid: { select: { seller: { select: { name: true } } } } } } } } },
@@ -159,8 +161,8 @@ function currenciesOf(tenders: TenderSummary[]): string[] {
 }
 
 /** Everything the buyer's dashboard shows about money. */
-export async function buyerCashflow() {
-  const [tenders, txs] = await Promise.all([listTenders(), transactions()]);
+export async function buyerCashflow(buyerId: string) {
+  const [tenders, txs] = await Promise.all([listTenders(buyerId), transactions({ buyerId })]);
   const totals: CurrencyTotals[] = currenciesOf(tenders).map((currency) => {
     const ts = tenders.filter((t) => t.currency === currency);
     const xs = txs.filter((t) => t.currency === currency);
@@ -185,7 +187,7 @@ export async function buyerCashflow() {
 /** What a seller has been paid and is still due, across the tenders they won. */
 export async function sellerCashflow(sellerId: string) {
   const tenders = await listTenders();
-  const txs = (await transactions(sellerId)).filter((t) => t.kind === "payment");
+  const txs = (await transactions({ sellerId })).filter((t) => t.kind === "payment");
   const received: Record<string, { cents: number; payments: number }> = {};
   for (const t of txs) {
     received[t.currency] ??= { cents: 0, payments: 0 };

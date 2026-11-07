@@ -34,6 +34,8 @@ export async function resetDemoTender(db: PrismaClient): Promise<void> {
   }
   // Earlier, finished tenders for the cash-flow history. Created once, never reset.
   await ensureDemoHistory(db);
+  // Tenders from before accounts existed could only have been posted by the demo buyer.
+  await db.tender.updateMany({ where: { buyerId: null }, data: { buyerId: "buyer-anna" } });
   await ensureDemoAccounts(db);
 
   const now = Date.now();
