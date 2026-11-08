@@ -181,7 +181,7 @@ function BidStory() {
         </div>
 
         <div className="story-end mt-3 grid gap-1 border-t border-white/10 pt-2.5 text-xs text-white/75">
-          <p>AI reviewed every bid and asked sellers what was missing, on WhatsApp.</p>
+          <p>AI reviewed every bid and asked sellers what was missing, in the inbox or on Telegram.</p>
           <p>⚑ B and C look coordinated. A person decides, the flag removes nobody.</p>
         </div>
       </div>

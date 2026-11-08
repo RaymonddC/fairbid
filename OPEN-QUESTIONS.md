@@ -18,7 +18,7 @@ Minimal is an MCP endpoint and scripted bots. Full is bots that price with their
 ## Still to verify
 
 - Hold renewal: retest due on 10 Nov
-- Twilio trial terms (the sandbox 24-hour free-text window is confirmed only by Twilio's docs, not yet by a test)
+- WhatsApp sending: needs a paid Twilio account, and probably a Content API template. Untested
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler
 - Real duty rate for the demo product. 12% is a demo assumption
