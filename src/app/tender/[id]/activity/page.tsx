@@ -50,14 +50,17 @@ function describe(
         detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; the AI only writes.`,
       };
     }
-    case "award.started":
+    case "award.started": {
+      const deposit = p.deposit as { cents?: number } | undefined;
       return {
         title: `Bid ${letterOf(p.bidId)} chosen, PayPal order created`,
         detail:
-          Number(p.phases ?? 1) > 1
+          (Number(p.phases ?? 1) > 1
             ? `Order of ${money(p.holdCents)}, paid in ${String(p.phases)} phases. Hold of ${money(p.firstHoldCents)} for phase 1 waiting for approval.`
-            : `Hold of ${money(p.holdCents)} waiting for approval.`,
+            : `Hold of ${money(p.holdCents)} waiting for approval.`) +
+          (deposit ? ` The buyer agreed that the first payment, ${money(deposit.cents)}, is a non-refundable deposit.` : ""),
       };
+    }
     case "award.authorized":
       return {
         title: `PayPal placed the ${Number(p.phases ?? 1) > 1 ? "phase 1 " : ""}hold: ${money(p.amountCents)}`,

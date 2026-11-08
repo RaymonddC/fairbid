@@ -95,8 +95,8 @@ export async function scoreAction(tenderId: string) {
   return run(async () => scoreTender(tenderId, (await owner(tenderId)).id));
 }
 
-export async function startAwardAction(tenderId: string, bidId: string) {
-  return run(async () => startAward(tenderId, bidId, (await owner(tenderId)).id));
+export async function startAwardAction(tenderId: string, bidId: string, depositAccepted: boolean) {
+  return run(async () => startAward(tenderId, bidId, (await owner(tenderId)).id, { depositAccepted: depositAccepted === true }));
 }
 
 export async function authorizeAwardAction(tenderId: string, orderId: string) {

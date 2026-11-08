@@ -99,6 +99,7 @@ function milestoneViews(award: NonNullable<Loaded["award"]>): MilestoneView[] {
     plannedCents: planned[i],
     status: m.status,
     phase: m.phase,
+    deposit: i === 0,
     dueAt: m.dueDay != null ? new Date(award.awardedAt.getTime() + m.dueDay * 86_400_000).toISOString() : null,
     capture: m.capture
       ? {

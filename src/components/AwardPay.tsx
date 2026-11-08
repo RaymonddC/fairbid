@@ -56,6 +56,8 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
   const phases = phasePlan(t.spec.deliveryDays, bid.holdCents);
   const phased = phases.length > 1;
   const first = phases[0].cents;
+  const deposit = phases[0].steps[0];
+  const [agreed, setAgreed] = useState(false);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -113,15 +115,32 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
             is paid until you confirm a step.
           </p>
         </div>
-        <PayPalButton
-          currency={t.currency}
-          createOrder={() => startAwardAction(t.id, bid.id)}
-          onApprove={(orderId) => authorizeAwardAction(t.id, orderId)}
-          successMessage={[
-            `Hold of ${eur(first)} placed with PayPal`,
-            `Bid ${bid.letter} won.${phased ? ` Phase 1 of ${phases.length} is held.` : ""} Nothing is paid until you confirm a step.`,
-          ]}
-        />
+        <label className="flex items-start gap-2.5 rounded-lg bg-canvas p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--dye)]"
+          />
+          <span>
+            I agree that the first payment, <strong className="num font-semibold">{eur(deposit.cents)}</strong> when{" "}
+            {deposit.name.toLowerCase()}, is a <strong className="font-semibold">non-refundable deposit</strong> for materials and work. If the
+            order ends early, it is not returned.
+          </span>
+        </label>
+        {agreed ? (
+          <PayPalButton
+            currency={t.currency}
+            createOrder={() => startAwardAction(t.id, bid.id, true)}
+            onApprove={(orderId) => authorizeAwardAction(t.id, orderId)}
+            successMessage={[
+              `Hold of ${eur(first)} placed with PayPal`,
+              `Bid ${bid.letter} won.${phased ? ` Phase 1 of ${phases.length} is held.` : ""} Nothing is paid until you confirm a step.`,
+            ]}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed border-line p-3 text-center text-sm text-muted">Agree to the deposit to show the PayPal button.</p>
+        )}
         <p className="text-xs text-muted">
           The other {others} bid{others === 1 ? " is" : "s are"} told they did not win once the hold is in place.
           {phased
@@ -265,7 +284,8 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
                           <span className="sr-only">{paid ? (waiting ? ", pending at PayPal" : ", paid") : current ? ", next" : ""}</span>
                         </span>
                         <span className="text-sm text-muted">
-                          {m.pct}% of the order{!paid && m.dueAt ? `, due about ${day(m.dueAt)}` : ""}
+                          {m.pct}% of the order{m.deposit ? ", non-refundable deposit" : ""}
+                          {!paid && m.dueAt ? `, due about ${day(m.dueAt)}` : ""}
                         </span>
                         {paid && !waiting && (
                           <span className="text-xs text-ok">
@@ -404,6 +424,7 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
           <p>
             {pending.milestone.name}. PayPal captures {eur(pending.amountCents)} from the hold and pays {award.sellerName}.
           </p>
+          {pending.milestone.deposit && <p>This is the non-refundable deposit you agreed to at award.</p>}
           {pending.final && pending.amountCents < holdLeft && <p>{eur(holdLeft - pending.amountCents)} is released back to you.</p>}
           <p className="font-medium text-ink">A payment can&apos;t be taken back once it is sent.</p>
         </Confirm>
@@ -422,8 +443,8 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
           }}
         >
           <p>
-            Nothing is held now, so ending costs nothing more: {eur(award.paidCents)} already paid to {first} stays paid, and{" "}
-            {eur(award.holdCents - award.paidCents)} is never charged.
+            Nothing is held now, so ending costs nothing more: {eur(award.paidCents)} already paid to {first} stays paid, including the
+            non-refundable deposit, and {eur(award.holdCents - award.paidCents)} is never charged.
           </p>
           <p className="font-medium text-ink">Tell {first} first: they should not start work that no hold covers. This can&apos;t be undone.</p>
         </Confirm>

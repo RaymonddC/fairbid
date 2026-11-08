@@ -63,6 +63,7 @@ const copy = {
     waitHold: (n: number) => `Phase ${n} is not held yet. Start its work once the buyer holds it: you will see it here.`,
     lapsed: (n: number) => `The buyer's hold for phase ${n} lapsed before it was paid. Wait for a new hold before you go on.`,
     ended: "The buyer ended the order here. What was paid is yours; nothing more is due.",
+    deposit: "non-refundable deposit",
   },
   id: {
     title: "Penawaran Anda",
@@ -112,6 +113,7 @@ const copy = {
     waitHold: (n: number) => `Tahap ${n} belum ditahan. Mulai pekerjaannya setelah pembeli menahan dananya: akan terlihat di sini.`,
     lapsed: (n: number) => `Penahanan dana tahap ${n} oleh pembeli habis sebelum dibayar. Tunggu penahanan baru sebelum melanjutkan.`,
     ended: "Pembeli menghentikan pesanan di sini. Yang sudah dibayar milik Anda; tidak ada lagi yang jatuh tempo.",
+    deposit: "uang muka, tidak dikembalikan",
   },
 };
 
@@ -236,6 +238,7 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                         <span className={paid ? "text-ok" : "text-muted"}>
                           {paid ? "✓ " : ""}
                           {m.name}
+                          {m.deposit && <span className="text-xs text-faint"> ({c.deposit})</span>}
                         </span>
                         <span className="num">{eur(paid?.amountCents ?? m.plannedCents)}</span>
                       </span>

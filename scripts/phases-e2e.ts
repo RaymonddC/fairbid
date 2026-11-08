@@ -26,6 +26,7 @@ import {
 import { DEMO_PHOTOS } from "../prisma/demo-photos";
 
 const DAY = 86_400_000;
+const DEPOSIT_OK = { depositAccepted: true };
 const BUYER = "buyer-anna";
 
 // ── A stand-in PayPal that keeps PayPal's rules ──────────────────────────────
@@ -124,8 +125,9 @@ async function main() {
   // 1. A two-month order: three phases, three holds.
   {
     const { tenderId, bidId } = await scoredTender(60);
-    const { orderId } = await startAward(tenderId, bidId, BUYER);
-    assert.equal((await startAward(tenderId, bidId, BUYER)).orderId, orderId, "a second click reuses the order");
+    await rejects(startAward(tenderId, bidId, BUYER, { depositAccepted: false }), /non-refundable deposit/);
+    const { orderId } = await startAward(tenderId, bidId, BUYER, DEPOSIT_OK);
+    assert.equal((await startAward(tenderId, bidId, BUYER, DEPOSIT_OK)).orderId, orderId, "a second click reuses the order");
     await authorizeAward(tenderId, orderId, BUYER);
     await authorizeAward(tenderId, orderId, BUYER); // repeat-safe
     let a = await view(tenderId);
@@ -206,6 +208,9 @@ async function main() {
 
     const check = verifyChain(await getEvents(tenderId));
     assert.equal(check.intact, true, "event chain intact");
+    const started = (await getEvents(tenderId)).find((e) => e.kind === "award.started")!.payload as { deposit?: { cents: number; nonRefundable: boolean } };
+    assert.equal(started.deposit?.nonRefundable, true, "the agreed deposit is on the record");
+    assert.equal(started.deposit?.cents, m1.plannedCents);
     const kinds = (await getEvents(tenderId)).map((e) => e.kind);
     console.log("60 days, three phases, one lapse, final denied by webhook: ok");
     console.log("  events:", kinds.join(" "));
@@ -214,7 +219,7 @@ async function main() {
   // 2. The buyer ends a phased order between phases.
   {
     const { tenderId, bidId } = await scoredTender(42);
-    const { orderId } = await startAward(tenderId, bidId, BUYER);
+    const { orderId } = await startAward(tenderId, bidId, BUYER, DEPOSIT_OK);
     await authorizeAward(tenderId, orderId, BUYER);
     const ids = await milestoneIds(tenderId);
     let a = await view(tenderId);
@@ -253,7 +258,7 @@ async function main() {
   // 3. An order of 28 days or less works as before: one hold, three captures.
   {
     const { tenderId, bidId } = await scoredTender(28);
-    const { orderId } = await startAward(tenderId, bidId, BUYER);
+    const { orderId } = await startAward(tenderId, bidId, BUYER, DEPOSIT_OK);
     await authorizeAward(tenderId, orderId, BUYER);
     let a = await view(tenderId);
     assert.equal(a.phases, 1);
@@ -273,7 +278,7 @@ async function main() {
   // 4. A 28-day order whose hold lapses mid-way gets a replacement for what is left.
   {
     const { tenderId, bidId } = await scoredTender(28);
-    const { orderId } = await startAward(tenderId, bidId, BUYER);
+    const { orderId } = await startAward(tenderId, bidId, BUYER, DEPOSIT_OK);
     await authorizeAward(tenderId, orderId, BUYER);
     let a = await view(tenderId);
     await captureMilestone(tenderId, a.milestones[0].id, a.milestones[0].plannedCents, BUYER);

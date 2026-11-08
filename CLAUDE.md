@@ -13,6 +13,7 @@ These carry the money and fairness story. Each one is a deliberate decision in `
   in the UI, docs or pitch. Unused budget goes back through `final_capture: true`. Do not use the word "escrow".
 - **No hold has to outlive PayPal's 29 days.** Over 28 days of delivery, an order is paid in phases with one hold each
   (`src/lib/phases.ts`); a lapsed hold is replaced, never extended. Run `npm run check:phases` after touching money steps.
+- **The first payment is a non-refundable deposit the buyer agreed to.** `startAward` refuses without `depositAccepted`.
 - **Sealed bids stay on the server until close.** `isSealed` in `src/lib/tender.ts`; only the count leaves before.
 - **Code ranks, the AI explains.** Delivered cost (`src/lib/landed.ts`), scores (`src/lib/scoring.ts`) and
   collusion pairs are computed in code. An LLM writes reasons and questions only.

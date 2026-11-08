@@ -99,6 +99,8 @@ export interface MilestoneView {
   status: "pending" | "confirmed" | "captured";
   /** Which phase's hold pays this step (src/lib/phases.ts). */
   phase: number;
+  /** The first step: a non-refundable deposit the buyer agreed to at award. */
+  deposit: boolean;
   /** When the step is expected, counted from the award. */
   dueAt: string | null;
   capture: CaptureView | null;

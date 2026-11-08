@@ -40,6 +40,7 @@ Not built yet: WhatsApp and Telegram. The demo tender keeps its scripted questio
 | A collusion flag never removes a bid | `findCoordinatedPairs` only flags a pair for the buyer to look at (`src/lib/scoring.ts`) |
 | Questions cannot leak an early hint | `askQuestion` refuses while bidding is open, and after a winner is chosen (`src/lib/workflow.ts`) |
 | No hold has to outlive PayPal's 29 days | Orders of up to 28 days get one hold. Longer orders, up to 180 days, are paid in phases: each phase's steps fall due within 28 days, and each phase gets its own hold, approved by the buyer when it starts (`planMilestones`, `nextStep`, `src/lib/phases.ts`). A hold that lapses with money owed can be replaced, never stretched |
+| The deposit is agreed, not assumed | The first step is a non-refundable deposit. The buyer must tick it before PayPal appears, the server refuses an award without it, and the agreed amount is in the award's event (`startAward`) |
 | Seller never works uncovered | A phase can only be paid from a live hold for that phase; the seller sees whether the next phase is held, and the buyer can end the order only between phases, when no hold is in place (`captureMilestone`, `endOrder`, `src/lib/workflow.ts`) |
 | Payments in order, never over the hold | `captureMilestone` pays the next step only, and refuses more than is left (`src/lib/workflow.ts`) |
 | Unused budget goes back to the buyer | The last capture sets `final_capture: true`, which closes the hold. No void or refund calls exist, because the sandbox refuses them with the seller as payee |

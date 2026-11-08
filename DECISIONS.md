@@ -27,6 +27,12 @@ Two things follow, and both are deliberate:
 
 The cost is one PayPal approval per phase, for example three for a two-month order. That is the price of never claiming a hold PayPal does not give.
 
+## The first payment is a non-refundable deposit
+
+Phases are paid as the work moves, not as goods arrive. So if a buyer stops after phase 1, for example because PayPal declines the next hold, the buyer has paid the first step and holds no goods yet; the seller has bought materials and started work. Rather than hide that, FairBid says it up front: the first step ("Production started", 30%) is a non-refundable deposit. The buyer ticks a box agreeing to it before the PayPal button appears, the server refuses an award without that agreement (`startAward`), and the agreed amount is written into the award's event. Every screen that lists the steps labels the deposit.
+
+The fairer long-term design is pay per shipped batch: split a long order into batches, each held, made, shipped with tracking and paid on shipment, so the buyer's money always buys goods that have left the workshop. It needs no hold longer than 28 days either. Chosen against for now (8 Nov 2026) to keep the current phases for the hackathon.
+
 ## PayPal's webhook is the second witness
 
 FairBid records each money step from PayPal's answer to its own call. PayPal's webhook then reports the same step from PayPal's side, plus anything that changes later: a payment held for review that completes or is denied days on, a hold that lapses, a seller who refunds from their own account. Each report is verified with PayPal, applied once, and appended to the tender's event log as actor `paypal`, so the log shows two independent sources for every payment. A record only moves forward; a payment denied after the fact reopens its step so the buyer can pay it again.

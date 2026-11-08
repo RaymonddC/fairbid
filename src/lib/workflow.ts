@@ -325,6 +325,8 @@ export async function scoreTender(tenderId: string, actor: string) {
 // approved by the buyer when the phase starts; an order of 28 days or less is one
 // phase. The seller is the payee of every hold, so FairBid never holds money.
 
+export const DEPOSIT_REQUIRED = "Agree that the first payment is a non-refundable deposit before awarding.";
+
 /** How long an unapproved order is reused before a new one is made. */
 const ORDER_REUSE_MS = 60 * 60_000;
 
@@ -391,8 +393,15 @@ async function createHoldOrder(input: {
 }
 
 /** Records the buyer's choice and creates the PayPal order for the first hold (intent
- * AUTHORIZE, seller as payee). Returns the order id for the PayPal button to approve. */
-export async function startAward(tenderId: string, bidId: string, actor: string): Promise<{ orderId: string }> {
+ * AUTHORIZE, seller as payee). Returns the order id for the PayPal button to approve.
+ * The buyer must have agreed that the first payment is a non-refundable deposit. */
+export async function startAward(
+  tenderId: string,
+  bidId: string,
+  actor: string,
+  terms: { depositAccepted: boolean },
+): Promise<{ orderId: string }> {
+  if (terms.depositAccepted !== true) throw new StepError(DEPOSIT_REQUIRED);
   if ((await statusOf(tenderId)) !== "SCORED") throw new StepError("Score the bids before awarding.");
   const t = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { award: { include: { authorizations: true } } } });
   if (t.award?.authorizations.some((a) => a.paypalAuthId)) throw new StepError("This tender is already awarded.");
@@ -444,7 +453,15 @@ export async function startAward(tenderId: string, bidId: string, actor: string)
     throw e;
   }
   await db.authorization.create({ data: { awardId: award.id, phase: 1, seq: 1, paypalOrderId: order.id, amountCents: firstHold, status: order.status } });
-  await appendEvent(tenderId, actor, "award.started", { bidId, holdCents: total, phases, firstHoldCents: firstHold, paypalOrderId: order.id });
+  // The agreed terms go on the record with the award: the first step is a deposit.
+  await appendEvent(tenderId, actor, "award.started", {
+    bidId,
+    holdCents: total,
+    phases,
+    firstHoldCents: firstHold,
+    paypalOrderId: order.id,
+    deposit: { milestone: plan[0].name, cents: planned[0], nonRefundable: true, acceptedBy: actor },
+  });
   return { orderId: order.id };
 }
 
