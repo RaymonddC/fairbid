@@ -17,15 +17,21 @@ async function call(method: string, body?: object) {
   return (await res.json()) as { ok: boolean; description?: string; result?: unknown };
 }
 
-if (cmd === "set") {
-  const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (!base || !base.startsWith("https://")) throw new Error("PUBLIC_BASE_URL must be the public https URL.");
-  if (!secret || !/^[A-Za-z0-9_-]{16,256}$/.test(secret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16-256 characters of A-Z a-z 0-9 _ -.");
-  const r = await call("setWebhook", { url: `${base}/api/webhooks/telegram`, secret_token: secret, allowed_updates: ["message"], drop_pending_updates: true });
-  console.log(r.ok ? `Webhook set to ${base}/api/webhooks/telegram` : `Telegram refused: ${r.description}`);
-} else {
-  const r = await call("getWebhookInfo");
-  console.log(JSON.stringify(r.result, null, 2));
+async function main() {
+  if (cmd === "set") {
+    const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (!base || !base.startsWith("https://")) throw new Error("PUBLIC_BASE_URL must be the public https URL.");
+    if (!secret || !/^[A-Za-z0-9_-]{16,256}$/.test(secret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16-256 characters of A-Z a-z 0-9 _ -.");
+    const r = await call("setWebhook", { url: `${base}/api/webhooks/telegram`, secret_token: secret, allowed_updates: ["message"], drop_pending_updates: true });
+    console.log(r.ok ? `Webhook set to ${base}/api/webhooks/telegram` : `Telegram refused: ${r.description}`);
+  } else {
+    const r = await call("getWebhookInfo");
+    console.log(JSON.stringify(r.result, null, 2));
+  }
 }
-export {};
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
