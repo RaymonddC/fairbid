@@ -11,7 +11,7 @@ import { Panel, Pill, SectionTitle, linkButton } from "./ui";
 // Shared column template so the header row and the bid rows line up.
 const OPEN_COLS = "sm:grid-cols-[minmax(0,1fr)_100px_140px]";
 
-export function SealedBids({ t }: { t: TenderView }) {
+export function SealedBids({ t, agents = false }: { t: TenderView; agents?: boolean }) {
   const eur = moneyFor(t.currency);
   const questions = t.clarifications.length;
 
@@ -69,23 +69,35 @@ export function SealedBids({ t }: { t: TenderView }) {
             <>
               <h2 className="text-base">Bidding closes {dayTime(t.closesAt)}</h2>
               <p className="text-sm text-muted">Prices and photos open together at the deadline. Bidding early earns nothing.</p>
-              <ActionButton
-                action={() => closeBiddingAction(t.id)}
-                busy="Opening the bids…"
-                success={["Bidding closed", "Every bid is open. The AI review has sent its questions to sellers."]}
-                disabled={t.bidCount === 0}
-              >
-                Close bidding now
-              </ActionButton>
-              <p className="text-xs text-faint">Demo shortcut. A real tender opens at its deadline.</p>
-              <ActionButton
-                action={() => inviteAgentsAction(t.id)}
-                variant="secondary"
-                busy="Seller agents are bidding…"
-                success={["Seller agents have bid", "Four seller agents read your tender over MCP and sealed their bids."]}
-              >
-                Invite seller agents
-              </ActionButton>
+              {t.bidCount === 0 ? (
+                <ActionButton
+                  action={() => closeBiddingAction(t.id)}
+                  variant="secondary"
+                  busy="Closing…"
+                  success={["Tender closed with no bids", "Nothing to compare or award, and nobody was charged."]}
+                >
+                  Close with no bids
+                </ActionButton>
+              ) : (
+                <ActionButton
+                  action={() => closeBiddingAction(t.id)}
+                  busy="Opening the bids…"
+                  success={["Bidding closed", "Every bid is open. The AI review has sent its questions to sellers."]}
+                >
+                  Close bidding now
+                </ActionButton>
+              )}
+              <p className="text-xs text-faint">Closing before the deadline is allowed, and the activity log shows it with the published deadline.</p>
+              {agents && (
+                <ActionButton
+                  action={() => inviteAgentsAction(t.id)}
+                  variant="secondary"
+                  busy="Seller agents are bidding…"
+                  success={["Seller agents have bid", "Four seller agents read your tender over MCP and sealed their bids."]}
+                >
+                  Invite seller agents
+                </ActionButton>
+              )}
             </>
           ) : (
             <>
@@ -98,7 +110,7 @@ export function SealedBids({ t }: { t: TenderView }) {
               <Link href={`/tender/${t.id}/review`} className={linkButton.primary}>
                 {questions ? `See the ${questions} questions` : "See the review"}
               </Link>
-              {t.waitingReplies > 0 && (
+              {agents && t.waitingReplies > 0 && (
                 <ActionButton
                   action={() => inviteAgentsAction(t.id)}
                   variant="secondary"

@@ -159,7 +159,9 @@ export async function classifyHsAction(product: string) {
  * seller's own agent would use. They bid while it is open and answer questions after. */
 export async function inviteAgentsAction(tenderId: string) {
   return run(async () => {
-    await owner(tenderId);
+    const user = await owner(tenderId);
+    // The four agents are scripted: they belong in the demo, never in a real buyer's bids.
+    if (!DEMO_USERS.some((u) => u.id === user.id)) throw new StepError("Seller agents are a demo feature, for the demo accounts only.");
     const keys = keysBySellerFromEnv(process.env.MCP_SELLER_KEYS);
     if (keys.size === 0) throw new StepError("No seller agents are set up here: MCP_SELLER_KEYS is empty.");
     // The agents call this same server on its loopback address. Never an address taken

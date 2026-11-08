@@ -57,9 +57,9 @@ The service already runs on Google Cloud, so the roles call Gemini through Verte
 
 A buyer can close bidding before the published deadline (R's call, 8 Nov 2026). The risk is a buyer closing right after a favoured seller bids; prices are sealed, so the buyer cannot see who is cheapest, but they can see the count. So an early close is never hidden: the event log records the published deadline next to the real closing time and says "closed early", and the hash chain keeps it from being edited away.
 
-## Seller agents can be invited to any tender
+## Scripted seller agents are for the demo accounts only
 
-"Invite seller agents" works for every buyer, not only the demo accounts (R's call, 8 Nov 2026), so anyone trying FairBid can watch agents bid over MCP on a tender of their own. The four agents are scripted and say so: every bid they seal is signed `agent:<seller>` in the event log and labelled "By a seller agent, over MCP", and only the buyer who owns the tender can invite them.
+"Invite seller agents" adds four scripted sellers to a tender. That shows MCP agents working, but on a real buyer's tender it would put fake bids next to real ones. So only the shared demo accounts can invite them, on tenders they own (R's call, 8 Nov 2026); the server refuses anyone else (`inviteAgentsAction`), and the button is not shown to them. Every bid an agent seals is signed `agent:<seller>` in the event log. A real seller's own agent can still bid on any open tender through `/api/mcp` with that seller's key.
 
 ## "Good" means the buyer's published criteria
 

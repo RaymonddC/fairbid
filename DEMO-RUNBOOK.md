@@ -18,7 +18,7 @@ For recording the video and for a live demo. Target: under 3 minutes.
 |---|---|---|
 | 0:00 | Buyer dashboard | A small hotel group buys abroad. The cheapest quote is rarely the cheapest delivered, and paying up front is a risk. |
 | 0:15 | Post a tender | Plain words in. The AI drafts the tender; Anna checks every field. A PayPal hold lasts 29 days, so a longer order is held one phase at a time; the form says how many holds. |
-| 0:35 | New tender, **Invite seller agents** | Four seller agents read the tender over MCP and seal their bids. Nobody, Anna included, sees a price before close. Open **Activity log**: each bid is signed by its agent. |
+| 0:35 | New tender (signed in as Anna: the agents are demo-only), **Invite seller agents** | Four seller agents read the tender over MCP and seal their bids. Nobody, Anna included, sees a price before close. Open **Activity log**: each bid is signed by its agent. |
 | 0:55 | Demo tender, **Close bidding now** | Every bid opens at once. The AI review sends the same question to every bid with the same gap. **Let seller agents answer**: traders B and C send the same sentence. |
 | 1:20 | Compare, **Delivered cost** | Switch from quoted price to delivered cost: duty, VAT and fees reorder the bids. B and C are flagged: prices 0.4% apart, the same text. A flag asks a person to look; it removes nothing. |
 | 1:45 | Award bid D | Anna picks Sari and ticks that the first 30% is a non-refundable deposit. PayPal holds EUR 2,540 in Anna's account with Sari as the payee. FairBid never touches the money. |
