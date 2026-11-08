@@ -52,6 +52,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
       PROXY_VERSION: v2.14.1
+      # The demo seller's sandbox business account, the PayPal payee the seed writes.
+      SELLER_D_PAYPAL_EMAIL: ${{ vars.SELLER_D_PAYPAL_EMAIL }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -113,6 +115,6 @@ jobs:
             --min-instances=${{ vars.MIN_INSTANCES || 0 }} --max-instances=3
             --concurrency=40 --memory=512Mi --cpu-boost
             --add-cloudsql-instances=${{ vars.SQL_CONNECTION }}
-            --set-env-vars=PAYPAL_ENV=sandbox,PAYPAL_CLIENT_ID=${{ vars.PAYPAL_CLIENT_ID }},PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }},ANTHROPIC_MODEL=${{ vars.ANTHROPIC_MODEL }},PAYPAL_WEBHOOK_ID=${{ vars.PAYPAL_WEBHOOK_ID }}
+            --set-env-vars=PAYPAL_ENV=sandbox,PAYPAL_CLIENT_ID=${{ vars.PAYPAL_CLIENT_ID }},PUBLIC_BASE_URL=${{ vars.PUBLIC_BASE_URL }},ANTHROPIC_MODEL=${{ vars.ANTHROPIC_MODEL }},PAYPAL_WEBHOOK_ID=${{ vars.PAYPAL_WEBHOOK_ID }},SELLER_D_PAYPAL_EMAIL=${{ vars.SELLER_D_PAYPAL_EMAIL }}
             --set-secrets=DATABASE_URL=fairbid-database-url:latest,SESSION_SECRET=fairbid-session-secret:latest,PAYPAL_SECRET=fairbid-paypal-secret:latest
       - run: echo "Deployed to ${{ steps.deploy.outputs.url }}"

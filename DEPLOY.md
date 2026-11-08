@@ -37,6 +37,7 @@ To reset the hosted demo data, run the **Deploy to Cloud Run** workflow by hand 
 |---|---|
 | `PAYPAL_CLIENT_ID`, `SQL_CONNECTION` | Set by the setup script |
 | `PAYPAL_WEBHOOK_ID` | Turns on PayPal webhooks. Without it they are rejected |
+| `SELLER_D_PAYPAL_EMAIL` | Sari's sandbox business account, the payee of the demo award. Without it PayPal refuses the award. After setting it, run the deploy with **seed** ticked or press Reset demo |
 | `PUBLIC_BASE_URL` | The service URL, for Twilio |
 | `ANTHROPIC_MODEL` | Claude model for the AI roles. Empty means `claude-opus-5-5` |
 | `MIN_INSTANCES` | `1` keeps one instance warm. Empty means scale to zero |
