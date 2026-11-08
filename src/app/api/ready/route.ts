@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { aiEnabled } from "@/lib/ai/model";
 import { aiLocation, aiModel } from "@/lib/ai-config";
+import { CHANNELS } from "@/lib/channels/registry";
 import { db } from "@/lib/db";
 import { createPayPalClient, loadConfig } from "@/lib/paypal/client";
 
@@ -56,6 +57,13 @@ export async function GET() {
       critical: false,
       detail: process.env.PAYPAL_WEBHOOK_ID ? "Configured." : "PAYPAL_WEBHOOK_ID is not set, so webhooks are rejected.",
     },
+    // Optional extras, so never critical: the in-app inbox works without them.
+    ...Object.values(CHANNELS).map((c) => ({
+      name: `channel_${c.kind}`,
+      ok: c.configured(),
+      critical: false,
+      detail: c.configured() ? "Configured." : `${c.label} is off: its settings are not all set (DEPLOY.md, "Message channels").`,
+    })),
   ];
   const ready = checks.every((check) => check.ok || !check.critical);
   return NextResponse.json({ ready, checks }, { status: ready ? 200 : 503 });

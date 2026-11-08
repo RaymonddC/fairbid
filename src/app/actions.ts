@@ -9,6 +9,8 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
 import { classifyHs, HS_CONFIDENCE_GATE, HS_FIXTURE, writeTender } from "@/lib/ai/roles";
+import { createLinkCode, unlinkChannel, type LinkOffer } from "@/lib/channels";
+import { isMessageChannel } from "@/lib/channels/registry";
 import { db } from "@/lib/db";
 import { draftFrom } from "@/lib/draft";
 import { resetDemoTender } from "@/lib/demo-reset";
@@ -90,6 +92,26 @@ export async function sellerReplyAction(clarificationId: string, body: string) {
     await addReply(clarificationId, bid.id, body, user.id);
   });
 }
+
+/** The signed-in seller asks for a one-time code to link a chat. */
+export async function linkChannelAction(kind: string) {
+  return run<{ offer: LinkOffer }>(async () => {
+    const user = await as("seller");
+    if (!isMessageChannel(kind)) throw new StepError("Unknown channel.");
+    if (!linkLimiter.hit(user.id)) throw new StepError("Too many codes requested. Wait a few minutes.");
+    return { offer: await createLinkCode(user.sellerId!, kind) };
+  });
+}
+
+export async function unlinkChannelAction(kind: string) {
+  return run(async () => {
+    const user = await as("seller");
+    if (!isMessageChannel(kind)) throw new StepError("Unknown channel.");
+    await unlinkChannel(user.sellerId!, kind);
+  });
+}
+
+const linkLimiter = createLimiter(10, 10 * 60_000);
 
 export async function scoreAction(tenderId: string) {
   return run(async () => scoreTender(tenderId, (await owner(tenderId)).id));

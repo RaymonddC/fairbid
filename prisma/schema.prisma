@@ -102,7 +102,9 @@ model Seller {
   channelKind    ChannelKind @default(inapp)
   channelAddress String?
 
-  bids Bid[]
+  bids         Bid[]
+  channelLinks ChannelLink[]
+  linkCodes    ChannelLinkCode[]
 }
 
 model Bid {
@@ -122,14 +124,15 @@ model Bid {
   // data URLs in the prototype.
   photos       Json      @default("[]")
 
-  tender  Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  seller  Seller    @relation(fields: [sellerId], references: [id])
-  lines   BidLine[]
-  scores  Score[]
-  replies Reply[]
-  flags   Flag[]    @relation("FlagBid")
-  pairedIn Flag[]   @relation("FlagPairedBid")
-  awards  Award[]
+  tender          Tender           @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  seller          Seller           @relation(fields: [sellerId], references: [id])
+  lines           BidLine[]
+  scores          Score[]
+  replies         Reply[]
+  channelMessages ChannelMessage[]
+  flags           Flag[]           @relation("FlagBid")
+  pairedIn        Flag[]           @relation("FlagPairedBid")
+  awards          Award[]
 
   @@unique([tenderId, sellerId])
   @@index([tenderId])
@@ -155,8 +158,9 @@ model Clarification {
   sentTo   Json // seller ids, so "same question to every relevant bidder" is checkable
   sentAt   DateTime @default(now())
 
-  tender  Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  replies Reply[]
+  tender          Tender           @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  replies         Reply[]
+  channelMessages ChannelMessage[]
 
   @@index([tenderId])
 }
@@ -173,6 +177,54 @@ model Reply {
   bid           Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
   @@unique([clarificationId, bidId])
+}
+
+// A seller's chat that also receives their clarification questions (Telegram chat id or
+// WhatsApp number). One per channel per seller; the in-app inbox needs none. The older
+// Seller.channelKind and channelAddress columns are unused and kept only so no applied
+// migration changes.
+model ChannelLink {
+  id       String      @id @default(uuid())
+  sellerId String
+  kind     ChannelKind
+  address  String
+  linkedAt DateTime    @default(now())
+
+  seller   Seller           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  messages ChannelMessage[]
+
+  @@unique([sellerId, kind])
+  @@unique([kind, address])
+}
+
+// A one-time code that proves a chat belongs to a seller who is signed in. Only a
+// sha256 of the code is stored; it is deleted when used or after it expires.
+model ChannelLinkCode {
+  codeHash  String      @id
+  sellerId  String
+  kind      ChannelKind
+  expiresAt DateTime
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerId, kind])
+}
+
+// A question as it was sent to a chat, so a reply to that message finds its question.
+model ChannelMessage {
+  id              String   @id @default(uuid())
+  linkId          String
+  clarificationId String
+  bidId           String
+  externalId      String
+  sentAt          DateTime @default(now())
+
+  link          ChannelLink   @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  clarification Clarification @relation(fields: [clarificationId], references: [id], onDelete: Cascade)
+  bid           Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, externalId])
+  @@index([linkId, sentAt])
 }
 
 model Score {
@@ -205,13 +257,13 @@ model Flag {
 }
 
 model Award {
-  id        String   @id @default(uuid())
-  tenderId  String   @unique
+  id        String    @id @default(uuid())
+  tenderId  String    @unique
   bidId     String
   // The whole order: goods and shipping to the door. Over 28 days of delivery it is
   // held one phase at a time (src/lib/phases.ts), so no single hold covers all of it.
   holdCents Int
-  awardedAt DateTime @default(now())
+  awardedAt DateTime  @default(now())
   // Set when the buyer ended the order between phases, with no hold in place.
   endedAt   DateTime?
 

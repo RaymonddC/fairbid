@@ -15,6 +15,7 @@ Working now:
 - Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
 - Five AI roles on Gemini through Vertex AI (`src/lib/ai/`): the tender writer drafts a tender from plain words, the HS classifier suggests the customs code, the proposal reviewer writes questions to sellers after close, the blind scorer judges the criteria code cannot, and the collusion reasoner explains why code paired two bids. Prompts are in `src/lib/ai/prompts.ts`. Without the AI, or when a call fails, each role answers from its scripted fixture, so the flow always runs
 - Seller agents over MCP (`/api/mcp`, Streamable HTTP, one API key per seller): tools to list open tenders, read one, seal a bid, check its status and answer questions. Four scripted agents (`src/lib/agents/bots.ts`, `npm run bots`) bid and answer through it; two of them coordinate, and the collusion screen flags them. The demo buyer's **Invite seller agents** button runs them on a tender; other accounts do not get it, so no real tender gets scripted bids
+- Optional message channels (`src/lib/channels/`): a seller links a Telegram chat or a WhatsApp number (Twilio sandbox) from their dashboard with a one-time code. A buyer's question then also arrives there, and a reply sent from that chat is recorded through the same `addReply` as the inbox, with the same checks and an activity-log line that names the channel. The in-app inbox stays the core path; with no channel configured nothing changes
 - A live activity log that refreshes itself, with agent and AI events labelled
 - Post a tender, Reset demo
 - Money steps are safe to repeat: PayPal calls time out and retry with their idempotency key, a lost hold is read back from the order, a double click pays once, and repeated webhooks are ignored
@@ -25,7 +26,7 @@ Working now:
 - Tender state machine and hash-chained event log
 - PayPal client with the seller as payee, and a verified, replay-safe webhook route
 
-Not built yet: WhatsApp and Telegram. The demo tender keeps its scripted questions, because its seeded replies answer them; every other tender gets the reviewer's own questions. The AI roles have only run on their fixtures so far: no live Claude call has been tested yet. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
+Not tested live yet: the Telegram and WhatsApp channels have run only against the local database and unit tests, not a real bot or the Twilio sandbox. The demo tender keeps its scripted questions, because its seeded replies answer them; every other tender gets the reviewer's own questions. The AI roles have only run on their fixtures so far: no live Claude call has been tested yet. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
 
 ## Guardrails, and where they live in code
 
@@ -92,7 +93,7 @@ When something is not working, open `/api/ready`. It checks the database and Pay
 - [ARCHITECTURE.md](ARCHITECTURE.md): how it fits together
 - [DECISIONS.md](DECISIONS.md): what we chose and why
 - [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md): what the team has not agreed yet
-- [DEPLOY.md](DEPLOY.md): Cloud Run setup
+- [DEPLOY.md](DEPLOY.md): Cloud Run setup, and how to switch on Telegram and WhatsApp
 - [DEMO-RUNBOOK.md](DEMO-RUNBOOK.md): pre-flight, timed beats, fallbacks, judge questions
 
 ## License

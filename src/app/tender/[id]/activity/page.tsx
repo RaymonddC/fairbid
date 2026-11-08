@@ -40,7 +40,10 @@ function describe(
       return { title: `You asked bid${asked.length > 1 ? "s" : ""} ${asked.join(", ")} a question`, detail: "The same question to each; replies cannot change a price." };
     }
     case "clarification.replied":
-      return { title: `Bid ${letterOf(p.bidId)} replied to a question` };
+      return {
+        title: `Bid ${letterOf(p.bidId)} replied to a question`,
+        detail: p.channel === "telegram" ? "Answered from Telegram." : p.channel === "whatsapp" ? "Answered from WhatsApp." : undefined,
+      };
     case "tender.scored":
       return {
         title: "Bids priced at delivered cost and scored",

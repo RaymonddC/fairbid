@@ -41,6 +41,16 @@ FairBid records each money step from PayPal's answer to its own call. PayPal's w
 
 Devpost requires that judges can run the build themselves. A flow that needs team phones in a Twilio sandbox fails that, so the in-app inbox is the core path and WhatsApp is an optional channel for the video.
 
+## Telegram and WhatsApp are optional channels behind one interface
+
+Both are built (`src/lib/channels/`). Telegram is the one a judge can try in a minute: make a free account, press Link on the seller dashboard, tap the bot link. WhatsApp through the Twilio sandbox fits the Indonesian seller story and is for the demo video, because a recipient must first send the sandbox its join phrase.
+
+- **A chat is linked by proof, not by typing a number.** The signed-in seller gets a one-time code (8 characters, 15 minutes, stored only as a hash) and sends it from the chat: `/start CODE` through Telegram's deep link, `link CODE` on WhatsApp. Only a private chat can be linked, and a chat belongs to one seller (the last to prove it holds it). WhatsApp also needs the number on `CHANNEL_ALLOWLIST`, so a stranger who finds the sandbox number cannot attach a chat. On the shared demo account the last judge to link holds the chat.
+- **A reply is a reply.** An inbound message goes through `addReply`, so the checks and the event-log entry are the in-app ones, and the entry also names the channel. The reply is matched by Telegram's reply-to or Twilio's `OriginalRepliedMessageSid`. Without one it goes to the only open question, and with several the seller is asked to use Reply, because a wrong guess would put an answer under the wrong buyer's question.
+- **Webhooks fail closed.** Telegram must echo the `secret_token`; Twilio's `X-Twilio-Signature` is checked against `PUBLIC_BASE_URL`. Each delivery is handled once (the `WebhookEvent` table PayPal uses).
+- **A chat that is down never blocks the question.** The question is saved and in the inbox first. A failed send is logged and skipped. Twilio's WhatsApp sandbox only accepts free text within 24 hours of the seller's last message, so a send outside that window fails quietly; the inbox still has it.
+- **Unused columns.** `Seller.channelKind` and `channelAddress` predate this and stay unused, because an applied migration must not change.
+
 ## One Next.js app, on Cloud Run
 
 One deployable, one language, and shared types in place of an API document. Hosting on Cloud Run gives up the Render sponsor prize, which is credits only, for a pipeline the team already knows.

@@ -4,7 +4,9 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "../generated/prisma/client";
+import type { ChannelKind } from "../generated/prisma/enums";
 import { appendEvent } from "./audit-store";
+import { relayClarification } from "./channels/relay";
 import { db } from "./db";
 import { holdCents, landedCost } from "./landed";
 import { log } from "./log";
@@ -187,6 +189,10 @@ export async function closeBidding(tenderId: string, actor: string) {
   });
   if (pairs.length) await appendEvent(tenderId, "review", "review.flagged", { pairs: pairs.map((p) => [p.bidId, p.pairedBidId]) });
   if (questions.length) await appendEvent(tenderId, "review", "clarification.sent", { count: questions.length });
+  if (questions.length) {
+    const sent = await db.clarification.findMany({ where: { tenderId, sentAt: asked }, select: { id: true } });
+    await Promise.all(sent.map((c) => relayClarification(c.id)));
+  }
   await appendEvent(tenderId, "ai", "review.completed", {
     questions: { count: questions.length, source: review.source },
     flagReasons: reasons.map((r) => r.source),
@@ -211,17 +217,20 @@ export async function askQuestion(tenderId: string, question: string, bidIds: st
   const bids = await db.bid.findMany({ where: { tenderId, id: { in: unique } }, select: { id: true, sellerId: true } });
   if (bids.length !== unique.length) throw new StepError("One of those bids is not part of this tender.");
 
-  await db.$transaction(async (tx) => {
-    await tx.clarification.create({ data: { tenderId, question: text, sentTo: bids.map((b) => b.sellerId) } });
+  const clarification = await db.$transaction(async (tx) => {
+    const created = await tx.clarification.create({ data: { tenderId, question: text, sentTo: bids.map((b) => b.sellerId) } });
     // A closed tender with no questions yet moves on to clarifying.
     if (status === "CLOSED") await move(tx, tenderId, "CLOSED", "REVIEWING");
     if (status === "CLOSED" || status === "REVIEWING") await move(tx, tenderId, "REVIEWING", "CLARIFYING");
+    return created;
   });
   await appendEvent(tenderId, actor, "clarification.asked", { bids: bids.map((b) => b.id) });
+  // Sellers who linked a chat get the question there too. The in-app inbox already has it.
+  await relayClarification(clarification.id);
 }
 
 /** A reply to a clarification. The price is locked; a reply never changes it. */
-export async function addReply(clarificationId: string, bidId: string, body: string, actor: string) {
+export async function addReply(clarificationId: string, bidId: string, body: string, actor: string, channel: ChannelKind = "inapp") {
   const text = body.trim().slice(0, 1000);
   if (!text) throw new StepError("Write a reply first.");
   const c = await db.clarification.findUnique({ where: { id: clarificationId }, include: { tender: true } });
@@ -232,10 +241,11 @@ export async function addReply(clarificationId: string, bidId: string, body: str
   if (!sentTo.includes(bid.sellerId)) throw new StepError("That bid was not asked this question.");
   await db.reply.upsert({
     where: { clarificationId_bidId: { clarificationId, bidId } },
-    create: { clarificationId, bidId, body: text, channel: "inapp" },
-    update: { body: text, receivedAt: new Date() },
+    create: { clarificationId, bidId, body: text, channel },
+    update: { body: text, receivedAt: new Date(), channel },
   });
-  await appendEvent(c.tenderId, actor, "clarification.replied", { clarificationId, bidId });
+  // The in-app event is unchanged; a reply from a chat also names it.
+  await appendEvent(c.tenderId, actor, "clarification.replied", channel === "inapp" ? { clarificationId, bidId } : { clarificationId, bidId, channel });
 }
 
 // ── Price and score ──────────────────────────────────────────────────────────

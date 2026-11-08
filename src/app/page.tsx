@@ -3,12 +3,15 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { CashflowChart } from "@/components/CashflowChart";
 import { QuestBoard, type Quest, type QuestState } from "@/components/QuestBoard";
+import { ChannelLinker } from "@/components/ChannelLinker";
 import { TransactionsGrid } from "@/components/TransactionsGrid";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusPill } from "@/components/StatusPill";
 import { Panel, SectionTitle, linkButton } from "@/components/ui";
 import { buyerCashflow, sellerCashflow, type UpcomingPayment } from "@/lib/cashflow";
+import { availableChannels, linksOf } from "@/lib/channels";
 import { db } from "@/lib/db";
+import { maskAddress } from "@/lib/channels/types";
 import { day, money } from "@/lib/format";
 import { getUser } from "@/lib/session";
 import { getTenderView } from "@/lib/tender-data";
@@ -240,8 +243,9 @@ function sumText(parts: [number, string][]): string {
 }
 
 async function SellerHome({ sellerId, name }: { sellerId: string; name: string }) {
-  const [cf, tenders] = await Promise.all([
+  const [cf, links, tenders] = await Promise.all([
     sellerCashflow(sellerId),
+    linksOf(sellerId),
     db.tender.findMany({
       // Every published tender: open ones to bid on, and closed ones this seller bid on.
       where: { OR: [{ status: "OPEN" }, { bids: { some: { sellerId } } }] },
@@ -281,6 +285,12 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
         </div>
 
         <TransactionsGrid txs={cf.transactions} title="Payments received" showSeller={false} />
+        <ChannelLinker
+          channels={availableChannels().map((c) => ({
+            ...c,
+            linked: links.find((l) => l.kind === c.kind) ? maskAddress(c.kind, links.find((l) => l.kind === c.kind)!.address) : null,
+          }))}
+        />
         <p className="text-xs text-faint">
           Rupiah amounts are estimates: PayPal fee {PAYPAL_FEE_PCT}% + 0.55 per payment, as charged in the sandbox, and assumed rates of Rp{" "}
           {IDR_PER.EUR.toLocaleString("id-ID")} per euro and Rp {IDR_PER.USD.toLocaleString("id-ID")} per dollar. Your PayPal account shows the real figures.

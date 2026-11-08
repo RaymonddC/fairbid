@@ -15,14 +15,10 @@ This sets the PayPal order's line items.
 
 Minimal is an MCP endpoint and scripted bots. Full is bots that price with their own LLM. Minimal is enough for the Agentic Commerce story.
 
-## WhatsApp or Telegram?
-
-WhatsApp fits the Indonesian seller story. Telegram is free and a judge can try it in a minute. Both sit behind one interface, so this can wait until the inbox works.
-
 ## Still to verify
 
 - Hold renewal: retest due on 10 Nov
-- Twilio trial terms
+- Twilio trial terms (the sandbox 24-hour free-text window is confirmed only by Twilio's docs, not yet by a test)
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler
 - Real duty rate for the demo product. 12% is a demo assumption
