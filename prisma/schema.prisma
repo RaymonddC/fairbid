@@ -288,6 +288,14 @@ model Event {
   @@unique([tenderId, seq])
 }
 
+// PayPal webhook deliveries already handled. PayPal retries until it gets a 2xx and
+// may deliver the same event twice; the id makes the second delivery a no-op.
+model WebhookEvent {
+  id         String   @id
+  eventType  String
+  receivedAt DateTime @default(now())
+}
+
 model TariffRate {
   id            String   @id @default(uuid())
   hsPrefix      String

@@ -1,13 +1,29 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { log } from "@/lib/log";
+import { createLimiter } from "@/lib/rate-limit";
 import { DEMO_USERS } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DUMMY_HASH, hashPassword, verifyPassword } from "@/lib/password";
 import { SELLER_COUNTRIES } from "@/lib/format";
 import { safeNext } from "@/lib/safe-next";
 import { clearSession, setSession } from "@/lib/session";
+
+const FIFTEEN_MINUTES = 15 * 60_000;
+const signInByEmail = createLimiter(8, FIFTEEN_MINUTES);
+const signInByIp = createLimiter(30, FIFTEEN_MINUTES);
+const registerByIp = createLimiter(10, 60 * 60_000);
+
+/** The caller's address. Google's front end appends the real client address to any
+ * X-Forwarded-For the client sent, so the last entry is the one a client cannot forge.
+ * The per-email limit is the real guard; this one only slows a single address. */
+async function clientIp(): Promise<string> {
+  const forwarded = (await headers()).get("x-forwarded-for");
+  return forwarded?.split(",").at(-1)?.trim() || "unknown";
+}
 
 export async function signInAction(formData: FormData) {
   const user = DEMO_USERS.find((candidate) => candidate.id === formData.get("userId"));
@@ -25,10 +41,19 @@ export async function passwordSignInAction(_prev: PasswordSignInState, formData:
   const password = String(formData.get("password") ?? "").slice(0, 200);
   if (!email || !password) return { error: "Enter your email and password.", email };
 
+  // Limits guessing per account and per address. The same answer either way, so it
+  // reveals nothing about which emails exist.
+  const ip = await clientIp();
+  if (!signInByEmail.hit(email) || !signInByIp.hit(ip)) {
+    log.warn("sign-in rate limited", { ip });
+    return { error: "Too many attempts. Wait 15 minutes, then try again.", email };
+  }
+
   const account = await db.account.findUnique({ where: { email } });
   const ok = verifyPassword(password, account?.passwordHash ?? DUMMY_HASH);
   if (!account || !ok) return { error: "That email and password do not match an account.", email };
 
+  signInByEmail.reset(email);
   await setSession(account.id);
   redirect(safeNext(formData.get("next")));
 }
@@ -50,6 +75,7 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
   const password = String(formData.get("password") ?? "");
   const fail = (error: string, field?: RegisterState["field"]): RegisterState => ({ error, field, values });
 
+  if (!registerByIp.hit(await clientIp())) return fail("Too many new accounts from here. Try again in an hour.");
   if (values.name.length < 2 || values.name.length > 80) return fail("Enter your name or your company's name.", "name");
   if (!EMAIL.test(values.email) || values.email.length > 200) return fail("Enter a valid email address.", "email");
   if (password.length < 8) return fail("Use at least 8 characters for the password.", "password");

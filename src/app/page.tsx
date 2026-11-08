@@ -174,9 +174,15 @@ function TenderCard({ t }: { t: TenderSummary }) {
       className="notice group grid gap-5 overflow-hidden rounded-xl p-4 transition-colors hover:border-line-strong sm:grid-cols-[96px_minmax(0,1fr)] sm:p-5"
     >
       <div className="relative hidden aspect-square overflow-hidden rounded-lg bg-canvas ring-1 ring-line sm:block">
-        {t.photo && (
+        {t.photo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={t.photo} alt="" className="h-full w-full object-cover" />
+        ) : (
+          // No reference photo: a parcel glyph, so the tile never looks broken.
+          <svg viewBox="0 0 24 24" className="absolute inset-0 m-auto h-9 w-9 text-faint" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" />
+            <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9M7.75 5.25l8.5 4.5" />
+          </svg>
         )}
       </div>
       <div className="grid min-w-0 gap-4">

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createPayPalClient, loadConfig, PayPalError } from "../paypal/client";
+import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError } from "../paypal/client";
 import { buildAuthorizeOrder, formatAmount, orderTotalCents, type AuthorizeOrderInput } from "../paypal/order";
 
 const ORDER: AuthorizeOrderInput = {
@@ -108,6 +108,74 @@ describe("client", () => {
     await assert.rejects(
       () => createPayPalClient(CONFIG, impl).getAuthorization("AUTH"),
       (error: unknown) => error instanceof PayPalError && error.status === 403 && error.issue === "PERMISSION_DENIED",
+    );
+  });
+
+  it("retries a 503 with the same idempotency key, then succeeds", async () => {
+    const { impl, calls } = fakeFetch([
+      { status: 503, body: { name: "SERVICE_UNAVAILABLE" } },
+      { body: { id: "CAP", status: "COMPLETED" } },
+    ]);
+    const cap = await createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).captureAuthorization({
+      authorizationId: "AUTH",
+      currency: "EUR",
+      amountCents: 100,
+      finalCapture: false,
+      requestId: "milestone-1",
+    });
+    assert.equal(cap.id, "CAP");
+    const keys = calls.slice(1).map((c) => new Headers(c.init.headers).get("PayPal-Request-Id"));
+    assert.deepEqual(keys, ["milestone-1", "milestone-1"]);
+  });
+
+  it("never retries a request that has no idempotency key", async () => {
+    const { impl, calls } = fakeFetch([{ status: 503, body: { name: "SERVICE_UNAVAILABLE" } }]);
+    await assert.rejects(() => createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).verifyWebhook(new Headers(), {}));
+    assert.equal(calls.length, 2); // token + one attempt
+  });
+
+  it("does not retry a 4xx", async () => {
+    const { impl, calls } = fakeFetch([{ status: 422, body: { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "AUTHORIZATION_EXPIRED" }] } }]);
+    await assert.rejects(
+      () => createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).getAuthorization("AUTH"),
+      (e: unknown) => e instanceof PayPalError && e.issue === "AUTHORIZATION_EXPIRED",
+    );
+    assert.equal(calls.length, 2);
+  });
+
+  it("gives up on a network failure with a clear error", async () => {
+    let n = 0;
+    const impl = (async () => {
+      n++;
+      if (n === 1) return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }));
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    await assert.rejects(
+      () => createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).getOrder("ORDER"),
+      (e: unknown) => e instanceof PayPalUnreachableError && e.issue === "UNREACHABLE",
+    );
+    assert.equal(n, 4); // token + three attempts
+  });
+
+  it("times out a call that never answers", async () => {
+    const impl = ((url: string, init: RequestInit) =>
+      url.endsWith("/oauth2/token")
+        ? Promise.resolve(new Response(JSON.stringify({ access_token: "t", expires_in: 3600 })))
+        : new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason)))) as typeof fetch;
+    await assert.rejects(
+      () => createPayPalClient(CONFIG, impl, { timeoutMs: 20, retryDelaysMs: [] }).getOrder("ORDER"),
+      (e: unknown) => e instanceof PayPalUnreachableError && /in time/.test(e.message),
+    );
+  });
+
+  it("turns a gateway error page into a PayPal error", async () => {
+    const impl = (async (url: string) =>
+      url.endsWith("/oauth2/token")
+        ? new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }))
+        : new Response("<html>Bad gateway</html>", { status: 502 })) as typeof fetch;
+    await assert.rejects(
+      () => createPayPalClient(CONFIG, impl, { retryDelaysMs: [] }).getOrder("ORDER"),
+      (e: unknown) => e instanceof PayPalError && e.status === 502,
     );
   });
 

@@ -7,7 +7,8 @@ import type { Prisma } from "../generated/prisma/client";
 import { appendEvent } from "./audit-store";
 import { db } from "./db";
 import { holdCents, landedCost } from "./landed";
-import { createPayPalClient, loadConfig, PayPalError, type PayPalClient } from "./paypal/client";
+import { log } from "./log";
+import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError, type PayPalClient } from "./paypal/client";
 import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED } from "./review-fixture";
 import {
   completenessScore,
@@ -256,7 +257,13 @@ export async function startAward(tenderId: string, bidId: string, actor: string)
   const hold = holdCents(landed);
   const spec = (t.spec ?? {}) as { item?: string; quantity?: number };
 
-  // An earlier attempt the buyer never approved is replaced, not reused.
+  // The PayPal button can ask for an order twice (a double click, a re-render). A recent
+  // order for the same bid is reused, so the one the buyer approves is the one on record.
+  const pending = t.award?.authorization;
+  if (t.award && pending && t.award.bidId === bidId && Date.now() - t.award.awardedAt.getTime() < ORDER_REUSE_MS) {
+    return { orderId: pending.paypalOrderId };
+  }
+  // An older attempt, or one for another bid, was never approved: it is replaced. Nothing was held.
   if (t.award) await db.award.delete({ where: { id: t.award.id } });
   const award = await db.award.create({
     data: {
@@ -291,24 +298,58 @@ export async function startAward(tenderId: string, bidId: string, actor: string)
   return { orderId: order.id };
 }
 
-/** The buyer approved on PayPal: authorize the order, so the money is held. */
+/** How long an unapproved order is reused before a new one is made. */
+const ORDER_REUSE_MS = 60 * 60_000;
+
+/** The buyer approved on PayPal: authorize the order, so the money is held. Safe to
+ * repeat: a second call, or one after a lost answer, records the same hold once. */
 export async function authorizeAward(tenderId: string, orderId: string, actor: string) {
   const auth = await db.authorization.findUnique({ where: { paypalOrderId: orderId }, include: { award: true } });
   if (!auth || auth.award.tenderId !== tenderId) throw new StepError("That PayPal order is not part of this tender.");
   if (auth.paypalAuthId) return;
 
-  const res = await pp().authorizeOrder(orderId, `authorize-${orderId}`);
-  const a = res.purchase_units?.[0]?.payments?.authorizations?.[0];
+  type Hold = { id: string; status: string; expiration_time?: string };
+  let a: Hold | undefined;
+  try {
+    const res = await pp().authorizeOrder(orderId, `authorize-${orderId}`);
+    a = res.purchase_units?.[0]?.payments?.authorizations?.[0];
+  } catch (error) {
+    // An earlier attempt may have reached PayPal and lost its answer: the hold then
+    // already exists on the order, and is read back instead of failing.
+    const maybeDone = error instanceof PayPalUnreachableError || (error instanceof PayPalError && error.issue === "ORDER_ALREADY_AUTHORIZED");
+    if (!maybeDone) throw error;
+    const order = await pp().getOrder(orderId);
+    a = order.purchase_units?.[0]?.payments?.authorizations?.[0];
+    if (!a) throw error;
+    log.warn("hold recovered from the order", { tenderId, orderId, paypalAuthId: a.id });
+  }
   if (!a) throw new StepError("PayPal did not return a hold. Nothing was charged.");
-  await db.$transaction(async (tx) => {
-    await tx.authorization.update({
-      where: { id: auth.id },
-      data: { paypalAuthId: a.id, status: a.status, expiresAt: a.expiration_time ? new Date(a.expiration_time) : null },
+  if (a.status === "DENIED" || a.status === "VOIDED") {
+    throw new StepError("PayPal declined the hold, so nothing is reserved. Try another payment method in the PayPal window.");
+  }
+
+  const hold = a;
+  const recorded = await db.$transaction(async (tx) => {
+    // Only the first of two concurrent calls records the hold and moves the tender.
+    const { count } = await tx.authorization.updateMany({
+      where: { id: auth.id, paypalAuthId: null },
+      data: { paypalAuthId: hold.id, status: hold.status, expiresAt: hold.expiration_time ? new Date(hold.expiration_time) : null },
     });
+    if (count === 0) return false;
     await move(tx, tenderId, "SCORED", "AWARDED");
+    return true;
   });
-  await appendEvent(tenderId, actor, "award.authorized", { paypalAuthId: a.id, amountCents: auth.amountCents, expiresAt: a.expiration_time });
+  if (recorded) {
+    await appendEvent(tenderId, actor, "award.authorized", { paypalAuthId: hold.id, amountCents: auth.amountCents, expiresAt: hold.expiration_time });
+  }
 }
+
+/** PayPal issues that mean the hold itself is gone, not just this attempt. */
+const DEAD_HOLD: Record<string, string> = {
+  AUTHORIZATION_EXPIRED: "EXPIRED",
+  AUTHORIZATION_VOIDED: "VOIDED",
+  AUTHORIZATION_ALREADY_CAPTURED: "CAPTURED",
+};
 
 /** Pays the next milestone from the hold. The last one is a final capture, which
  * releases whatever is left back to the buyer; it may be less than planned. */
@@ -327,6 +368,13 @@ export async function captureMilestone(
   const auth = award.authorization;
   if (!auth?.paypalAuthId) throw new StepError("The hold is not in place yet.");
 
+  // A second click on a step that is already paid gets the same answer, not an error.
+  const asked = award.milestones.find((m) => m.id === milestoneId);
+  if (asked?.capture) {
+    const last = asked === award.milestones[award.milestones.length - 1];
+    const paidSoFar = award.milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0);
+    return { captureId: asked.capture.paypalCaptureId ?? "", releasedCents: last ? award.holdCents - paidSoFar : 0, final: last };
+  }
   const next = award.milestones.find((m) => !m.capture);
   if (!next || next.id !== milestoneId) throw new StepError("Pay the steps in order.");
   const planned = milestoneAmounts(award.holdCents, award.milestones.map((m) => ({ name: m.name, pct: m.pct })));
@@ -340,32 +388,50 @@ export async function captureMilestone(
     throw new StepError(final ? `The most left to pay is ${formatEur(remaining, award.tender.currency)}.` : "This step pays the planned amount.");
   }
 
-  const cap = await pp().captureAuthorization({
-    authorizationId: auth.paypalAuthId,
-    currency: award.tender.currency,
-    amountCents,
-    finalCapture: final,
-    requestId: `capture-${next.id}`,
-  });
-
-  await db.$transaction(async (tx) => {
-    await tx.capture.create({
-      data: {
-        authorizationId: auth.id,
-        milestoneId: next.id,
-        paypalCaptureId: cap.id,
-        amountCents,
-        finalCapture: final,
-        status: cap.status,
-      },
+  // The request id is the milestone: a retry, a double click or a lost answer all get
+  // PayPal's first answer back, so a step can never be paid twice.
+  let cap: { id: string; status: string };
+  try {
+    cap = await pp().captureAuthorization({
+      authorizationId: auth.paypalAuthId,
+      currency: award.tender.currency,
+      amountCents,
+      finalCapture: final,
+      requestId: `capture-${next.id}`,
     });
-    await tx.milestone.update({ where: { id: next.id }, data: { status: "captured" } });
-    if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
-    if (final) {
-      await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
-      await tx.authorization.update({ where: { id: auth.id }, data: { status: "CAPTURED" } });
-    }
-  });
+  } catch (error) {
+    const dead = error instanceof PayPalError ? DEAD_HOLD[error.issue ?? ""] : undefined;
+    if (dead) await db.authorization.update({ where: { id: auth.id }, data: { status: dead } });
+    throw error;
+  }
+  if (cap.status === "DECLINED" || cap.status === "FAILED") {
+    throw new StepError("PayPal declined this payment, so nothing was paid. The hold is still in place.");
+  }
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.capture.create({
+        data: {
+          authorizationId: auth.id,
+          milestoneId: next.id,
+          paypalCaptureId: cap.id,
+          amountCents,
+          finalCapture: final,
+          status: cap.status,
+        },
+      });
+      await tx.milestone.update({ where: { id: next.id }, data: { status: "captured" } });
+      if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
+      if (final) {
+        await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
+        await tx.authorization.update({ where: { id: auth.id }, data: { status: "CAPTURED" } });
+      }
+    });
+  } catch (error) {
+    // A concurrent click already recorded this same capture: the step is paid, once.
+    if (isUniqueViolation(error)) return { captureId: cap.id, releasedCents: final ? remaining - amountCents : 0, final };
+    throw error;
+  }
   await appendEvent(tenderId, actor, "milestone.paid", {
     milestone: next.name,
     amountCents,
@@ -495,21 +561,40 @@ export async function publishTender(input: TenderInput, actor: string): Promise<
   return tender.id;
 }
 
+/** Prisma's unique-constraint error: someone else wrote the same row first. */
+export function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2002";
+}
+
+const PAYPAL_MESSAGES: Record<string, string> = {
+  PAYEE_ACCOUNT_INVALID: "PayPal does not know the seller's account. Set SELLER_D_PAYPAL_EMAIL to a sandbox business account and reset the demo.",
+  PAYEE_ACCOUNT_RESTRICTED: "PayPal cannot pay the seller's account right now.",
+  AUTHORIZATION_EXPIRED: "The PayPal hold has expired, so it can no longer pay the seller.",
+  AUTHORIZATION_VOIDED: "PayPal has cancelled this hold, so it can no longer pay the seller.",
+  PERMISSION_DENIED: "PayPal refused: this needs PayPal Multiparty.",
+  ORDER_NOT_APPROVED: "The order was not approved on PayPal yet.",
+  INSTRUMENT_DECLINED: "PayPal declined the buyer's payment method. Try another one in the PayPal window.",
+  PAYER_ACTION_REQUIRED: "PayPal needs the buyer to finish a step in the PayPal window first.",
+  MAX_CAPTURE_AMOUNT_EXCEEDED: "That is more than the hold has left.",
+};
+
 /** Turns any failure into a message the screen can show. PayPal's own issue code is kept. */
 export function toResult(error: unknown): { ok: false; error: string } {
   if (error instanceof StepError) return { ok: false, error: error.message };
-  if (error instanceof PayPalError) {
-    console.error("PayPal", error.status, error.issue, error.debugId, error.message);
-    const known: Record<string, string> = {
-      PAYEE_ACCOUNT_INVALID: "PayPal does not know the seller's account. Set SELLER_D_PAYPAL_EMAIL to a sandbox business account and reset the demo.",
-      PAYEE_ACCOUNT_RESTRICTED: "PayPal cannot pay the seller's account right now.",
-      AUTHORIZATION_EXPIRED: "The PayPal hold has expired.",
-      PERMISSION_DENIED: "PayPal refused: this needs PayPal Multiparty.",
-      ORDER_NOT_APPROVED: "The order was not approved on PayPal yet.",
-      INSTRUMENT_DECLINED: "PayPal declined the buyer's payment method. Try another one in the PayPal window.",
-    };
-    return { ok: false, error: known[error.issue ?? ""] ?? `PayPal could not do this (${error.issue ?? error.status}).` };
+  if (error instanceof PayPalUnreachableError) {
+    log.error("PayPal unreachable", error);
+    // The request may have arrived. Every money call carries an idempotency key, so a retry is safe.
+    return { ok: false, error: "PayPal did not answer in time. Try again: a repeat can never pay twice." };
   }
-  console.error(error);
-  return { ok: false, error: "Something went wrong on our side. Nothing was charged. Try again." };
+  if (error instanceof PayPalError) {
+    log.error("PayPal refused", error);
+    return { ok: false, error: PAYPAL_MESSAGES[error.issue ?? ""] ?? `PayPal could not do this (${error.issue ?? error.status}).` };
+  }
+  if (isUniqueViolation(error) || (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2034")) {
+    return { ok: false, error: "This tender changed in the meantime. Reload the page." };
+  }
+  log.error("step failed", error);
+  // Not "nothing was charged": the failure may come after PayPal already paid. A retry
+  // with the same idempotency key then records that payment instead of making a new one.
+  return { ok: false, error: "Something went wrong on our side. Try again: a repeat can never pay twice." };
 }

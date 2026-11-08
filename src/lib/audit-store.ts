@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
 import { GENESIS_HASH, chainEvent, type ChainedEvent } from "./audit";
+import { log } from "./log";
 
 /** Appends one event. The tender row lock stops two writers forking the chain.
  * A failed write is logged and never fails the action it records: recording work
@@ -23,7 +24,7 @@ export async function appendEvent(tenderId: string, actor: string, kind: string,
       });
     });
   } catch (error) {
-    console.error(`event log write failed: tender=${tenderId} kind=${kind}`, error);
+    log.error("event log write failed", error, { tenderId, kind });
   }
 }
 

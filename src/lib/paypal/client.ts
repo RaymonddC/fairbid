@@ -38,17 +38,61 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
 type Fetch = typeof fetch;
 
-export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetch) {
+export interface ClientOptions {
+  /** Each attempt gives up after this long, so a stuck PayPal call cannot hold a request open. */
+  timeoutMs?: number;
+  /** Waits before each retry. Only safe requests are retried: GETs, the token, and
+   * calls that carry a PayPal-Request-Id, which PayPal answers once however often it is sent. */
+  retryDelaysMs?: number[];
+}
+
+/** A network failure or timeout: the request may or may not have reached PayPal. */
+export class PayPalUnreachableError extends PayPalError {
+  constructor(message: string) {
+    super(message, 0, "UNREACHABLE");
+    this.name = "PayPalUnreachableError";
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetch, options: ClientOptions = {}) {
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const retryDelays = options.retryDelaysMs ?? [400, 1_500];
   let token: { value: string; expiresAt: number } | null = null;
+
+  /** One HTTP exchange with retries on network errors, 429 and 5xx. Other errors return at once. */
+  async function send(url: string, init: RequestInit, retryable: boolean): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const last = !retryable || attempt >= retryDelays.length;
+      let res: Response;
+      try {
+        res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      } catch (error) {
+        if (last) {
+          const why = error instanceof Error && error.name === "TimeoutError" ? "did not answer in time" : "could not be reached";
+          throw new PayPalUnreachableError(`PayPal ${why}.`);
+        }
+        await sleep(retryDelays[attempt]);
+        continue;
+      }
+      if (last || (res.status < 500 && res.status !== 429)) return res;
+      await sleep(retryDelays[attempt]);
+    }
+  }
 
   async function accessToken(): Promise<string> {
     if (token && Date.now() < token.expiresAt) return token.value;
     const basic = Buffer.from(`${config.clientId}:${config.secret}`).toString("base64");
-    const res = await fetchImpl(`${SANDBOX_BASE}/v1/oauth2/token`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: "grant_type=client_credentials",
-    });
+    const res = await send(
+      `${SANDBOX_BASE}/v1/oauth2/token`,
+      {
+        method: "POST",
+        headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=client_credentials",
+      },
+      true,
+    );
     if (!res.ok) throw new PayPalError("PayPal refused the client credentials.", res.status);
     const body = (await res.json()) as { access_token: string; expires_in: number };
     // Renew a minute early so a token cannot expire mid-request.
@@ -57,20 +101,30 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
   }
 
   async function call<T>(path: string, init: { method: string; body?: unknown; requestId?: string }): Promise<T> {
-    const res = await fetchImpl(`${SANDBOX_BASE}${path}`, {
-      method: init.method,
-      headers: {
-        Authorization: `Bearer ${await accessToken()}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-        // PayPal treats a repeat with the same id as the same request, so a retry
-        // after a timeout cannot capture twice.
-        ...(init.requestId ? { "PayPal-Request-Id": init.requestId } : {}),
+    const res = await send(
+      `${SANDBOX_BASE}${path}`,
+      {
+        method: init.method,
+        headers: {
+          Authorization: `Bearer ${await accessToken()}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+          // PayPal treats a repeat with the same id as the same request, so a retry
+          // after a timeout cannot capture twice.
+          ...(init.requestId ? { "PayPal-Request-Id": init.requestId } : {}),
+        },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
       },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
+      init.method === "GET" || Boolean(init.requestId),
+    );
     const text = await res.text();
-    const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      // A gateway error page instead of JSON.
+      if (res.ok) throw new PayPalError("PayPal sent an unreadable answer.", res.status);
+    }
     if (!res.ok) {
       const details = parsed.details as { issue?: string }[] | undefined;
       throw new PayPalError(
@@ -122,6 +176,15 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
           requestId: input.requestId,
         },
       );
+    },
+
+    /** The order with its authorizations, to recover a hold whose answer was lost. */
+    getOrder(orderId: string) {
+      return call<{
+        id: string;
+        status: string;
+        purchase_units?: { payments?: { authorizations?: { id: string; status: string; expiration_time?: string }[] } }[];
+      }>(`/v2/checkout/orders/${encodeURIComponent(orderId)}`, { method: "GET" });
     },
 
     getAuthorization(authorizationId: string) {

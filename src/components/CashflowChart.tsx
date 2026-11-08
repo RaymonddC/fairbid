@@ -31,9 +31,10 @@ export function CashflowChart({ months, currency }: { months: MonthFlow[]; curre
         ))}
       </ul>
 
-      <div className="relative grid grid-cols-[52px_1fr] gap-2">
+      {/* Top padding: the highest axis label is centred on the top gridline, so half of it sits above the plot. */}
+      <div className="relative grid grid-cols-[52px_1fr] gap-2 pt-2">
         {/* Axis labels, recessive. */}
-        <div className="relative h-48 text-right text-[11px] text-faint" aria-hidden="true">
+        <div className="relative h-48 text-right text-[11px] leading-none text-faint" aria-hidden="true">
           {ticks.map((t) => (
             <span key={t} className="num absolute right-0 -translate-y-1/2" style={{ bottom: pct(t) }}>
               {eur(t)}
