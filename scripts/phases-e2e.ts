@@ -15,6 +15,7 @@ import { getTenderView } from "../src/lib/tender-data";
 import {
   authorizeAward,
   captureMilestone,
+  closeBidding,
   endOrder,
   publishTender,
   StepError,
@@ -294,6 +295,68 @@ async function main() {
     assert.equal(a.complete, true);
     assert.equal(a.paidCents, a.holdCents);
     console.log("28 days, hold lapsed and replaced: ok");
+  }
+
+  // 5. Two clicks on the same step at once: one PayPal capture, one record, one event.
+  {
+    const { tenderId, bidId } = await scoredTender(28);
+    const { orderId } = await startAward(tenderId, bidId, BUYER, DEPOSIT_OK);
+    await authorizeAward(tenderId, orderId, BUYER);
+    const m = (await view(tenderId)).milestones[0];
+    const [r1, r2] = await Promise.all([
+      captureMilestone(tenderId, m.id, m.plannedCents, BUYER).catch((e: Error) => e),
+      captureMilestone(tenderId, m.id, m.plannedCents, BUYER).catch((e: Error) => e),
+    ]);
+    const ok = [r1, r2].filter((r) => !(r instanceof Error));
+    assert.ok(ok.length >= 1, "at least one click succeeds");
+    for (const r of ok) assert.equal((r as { captureId: string }).captureId, (ok[0] as { captureId: string }).captureId, "the same capture");
+    const paidEvents = (await getEvents(tenderId)).filter((e) => e.kind === "milestone.paid");
+    assert.equal(paidEvents.length, 1, "one payment event, not two");
+    assert.equal((await view(tenderId)).paidCents, m.plannedCents);
+    console.log("double click on a payment: one capture, one event: ok");
+  }
+
+  // 6. Bidding closes with no bids: the tender is cancelled, not left waiting for an award.
+  {
+    const tenderId = await publishTender(
+      {
+        destination: "DE",
+        title: "E2E phases no bids",
+        needText: "A tender nobody bids on, closed by the buyer at the deadline.",
+        item: "Napkins",
+        quantity: 10,
+        budgetCents: 10_000,
+        deliveryDays: 14,
+        closesInDays: 1,
+        criteria: [{ name: "Delivered cost", weightPct: 100, rubric: "Lower is better." }],
+        photos: [],
+      },
+      BUYER,
+    );
+    created.push(tenderId);
+    await closeBidding(tenderId, BUYER);
+    assert.equal((await getTenderView(tenderId))!.status, "CANCELLED");
+    console.log("closed with no bids, cancelled: ok");
+  }
+
+  // 7. Inputs a browser form would never send are refused on the server.
+  {
+    const base = {
+      destination: "DE",
+      title: "E2E phases bad input",
+      needText: "Checking that the server refuses what the form never sends.",
+      item: "Napkins",
+      quantity: 10,
+      budgetCents: 10_000,
+      deliveryDays: 14,
+      closesInDays: 3,
+      criteria: [{ name: "Delivered cost", weightPct: 100, rubric: "" }],
+      photos: [],
+    };
+    await rejects(publishTender({ ...base, closesInDays: -5 }, BUYER), /open 1 to 30 days/);
+    await rejects(publishTender({ ...base, criteria: [{ name: "A", weightPct: 150, rubric: "" }, { name: "B", weightPct: -50, rubric: "" }] }, BUYER), /whole percent/);
+    await rejects(publishTender({ ...base, deliveryDays: 400 }, BUYER), /1 to 180 days/);
+    console.log("bad tender input refused: ok");
   }
 }
 

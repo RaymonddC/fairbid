@@ -91,22 +91,28 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
 
   const id = `acct-${randomUUID()}`;
   const sellerId = role === "seller" ? `seller-${randomUUID()}` : null;
-  await db.$transaction(async (tx) => {
-    if (sellerId) {
-      await tx.seller.create({ data: { id: sellerId, name: values.name, country: values.country, paypalEmail: values.paypalEmail } });
-    }
-    await tx.account.create({
-      data: {
-        id,
-        email: values.email,
-        name: values.name,
-        role,
-        sellerId,
-        detail: role === "seller" ? "Seller" : "Buyer",
-        passwordHash: hashPassword(password),
-      },
+  try {
+    await db.$transaction(async (tx) => {
+      if (sellerId) {
+        await tx.seller.create({ data: { id: sellerId, name: values.name, country: values.country, paypalEmail: values.paypalEmail } });
+      }
+      await tx.account.create({
+        data: {
+          id,
+          email: values.email,
+          name: values.name,
+          role,
+          sellerId,
+          detail: role === "seller" ? "Seller" : "Buyer",
+          passwordHash: hashPassword(password),
+        },
+      });
     });
-  });
+  } catch (error) {
+    // Two sign-ups with the same email at once: the second gets the same answer as above.
+    if ((error as { code?: unknown })?.code === "P2002") return fail("An account with this email already exists. Sign in instead.", "email");
+    throw error;
+  }
   await setSession(id);
   redirect("/");
 }

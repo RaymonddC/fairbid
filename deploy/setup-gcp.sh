@@ -109,7 +109,7 @@ echo "== Database (first creation takes several minutes) =="
 gcloud sql instances describe "$SQL_INSTANCE" >/dev/null 2>&1 ||
   gcloud sql instances create "$SQL_INSTANCE" --region="$REGION" \
     --database-version=POSTGRES_16 --edition=enterprise --tier="$SQL_TIER" \
-    --storage-type=HDD --storage-size=10 --no-backup --quiet
+    --storage-type=HDD --storage-size=10 --backup-start-time=18:00 --retained-backups-count=7 --quiet
 gcloud sql databases describe fairbid --instance="$SQL_INSTANCE" >/dev/null 2>&1 ||
   gcloud sql databases create fairbid --instance="$SQL_INSTANCE"
 if gcloud sql users list --instance="$SQL_INSTANCE" --format='value(name)' | grep -qx fairbid; then

@@ -72,6 +72,12 @@ export async function closeBidding(tenderId: string, actor: string) {
   if ((await statusOf(tenderId)) !== "OPEN") throw new StepError("Bidding is already closed.");
   // Same order as the screens, so the letters the AI uses match the letters people see.
   const bids = await db.bid.findMany({ where: { tenderId }, include: { lines: true }, orderBy: [{ submittedAt: "asc" }, { sellerId: "asc" }] });
+  if (bids.length === 0) {
+    // Nothing to compare or award: the tender ends here, and nobody is charged anything.
+    await db.$transaction((tx) => move(tx, tenderId, "OPEN", "CANCELLED"));
+    await appendEvent(tenderId, actor, "tender.cancelled", { reason: "no_bids" });
+    return;
+  }
   const tender = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { criteria: true } });
   const { currency } = tender;
   const now = new Date();
@@ -235,6 +241,7 @@ export async function scoreTender(tenderId: string, actor: string) {
     where: { id: tenderId },
     include: { criteria: true, bids: { include: { lines: true } } },
   });
+  if (t.bids.length === 0) throw new StepError("There are no bids to score.");
   const windowDays = Number((t.spec as { deliveryDays?: number })?.deliveryDays ?? 28);
 
   const priced: { bid: (typeof t.bids)[number]; landed: ReturnType<typeof landedCost>; tariff: Awaited<ReturnType<typeof tariffFor>>; delivered: number }[] = [];
@@ -678,20 +685,28 @@ export async function captureMilestone(
   }
 
   const releasedCents = lastOfPhase ? holdLeft - amountCents : 0;
+  const result = { captureId: cap.id, releasedCents, final, phaseDone: lastOfPhase && !final };
+  let recorded = false;
   try {
-    await db.$transaction(async (tx) => {
+    recorded = await db.$transaction(async (tx) => {
+      // Claim the step first: of two concurrent clicks (same request id, so one PayPal
+      // capture), only one records it, moves the tender and writes the event.
+      const claim = await tx.milestone.updateMany({ where: { id: next.id, status: { not: "captured" } }, data: { status: "captured" } });
+      if (claim.count === 0) return false;
       // A refused capture from an earlier try is replaced by this one.
       await tx.capture.upsert({ where: { milestoneId: next.id }, create: row, update: row });
-      await tx.milestone.update({ where: { id: next.id }, data: { status: "captured" } });
-      if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
+      const now = await tx.tender.findUniqueOrThrow({ where: { id: tenderId }, select: { status: true } });
+      if (now.status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
       if (lastOfPhase) await tx.authorization.update({ where: { id: hold.id }, data: { status: "CAPTURED" } });
       if (final) await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
+      return true;
     });
   } catch (error) {
     // A concurrent click already recorded this same capture: the step is paid, once.
-    if (isUniqueViolation(error)) return { captureId: cap.id, releasedCents, final, phaseDone: lastOfPhase && !final };
+    if (isUniqueViolation(error)) return result;
     throw error;
   }
+  if (!recorded) return result;
   await appendEvent(tenderId, actor, "milestone.paid", {
     milestone: next.name,
     amountCents,
@@ -703,7 +718,7 @@ export async function captureMilestone(
     reason: cap.status_details?.reason,
     releasedCents,
   });
-  return { captureId: cap.id, releasedCents, final, phaseDone: lastOfPhase && !final };
+  return result;
 }
 
 /** The buyer stops the order between phases, when no hold is in place: nothing more is
@@ -769,6 +784,7 @@ export async function submitBid(tenderId: string, sellerId: string, input: BidIn
     if (!Number.isInteger(v) || v < 0 || v > 100_000_000) throw new StepError(`${label} must be a whole amount in euros.`);
   }
   if (input.goodsCents === 0) throw new StepError("Enter your price.");
+  if (typeof input.notes !== "string" || typeof input.hsCode !== "string") throw new StepError("Describe what you sell and confirm the customs code.");
   if (!Number.isInteger(input.leadTimeDays) || input.leadTimeDays < 1 || input.leadTimeDays > 365) {
     throw new StepError("Days to deliver must be between 1 and 365.");
   }
@@ -814,12 +830,29 @@ export interface TenderInput {
 }
 
 export async function publishTender(input: TenderInput, actor: string): Promise<string> {
+  // A server action is a public endpoint: nothing here trusts the form's own limits.
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 8) {
+    throw new StepError("Use 1 to 8 scoring criteria.");
+  }
+  for (const c of input.criteria) {
+    if (!text(c.name).trim() || text(c.name).length > 60) throw new StepError("Give each criterion a short name.");
+    if (text(c.rubric).length > 300) throw new StepError("Keep each criterion's rubric under 300 characters.");
+    if (!Number.isInteger(c.weightPct) || c.weightPct < 1 || c.weightPct > 100) throw new StepError("Each weight must be a whole percent from 1 to 100.");
+  }
+  if (new Set(input.criteria.map((c) => text(c.name).trim().toLowerCase())).size !== input.criteria.length) {
+    throw new StepError("Each criterion needs its own name.");
+  }
   const total = input.criteria.reduce((s, c) => s + c.weightPct, 0);
   if (total !== 100) throw new StepError("Weights must add up to 100%.");
+  if (!Number.isInteger(input.closesInDays) || input.closesInDays < 1 || input.closesInDays > 30) {
+    throw new StepError("Bidding must stay open 1 to 30 days.");
+  }
+  if (!text(input.item).trim()) throw new StepError("Say what is being bought.");
   if (!Number.isInteger(input.deliveryDays) || input.deliveryDays < 1 || input.deliveryDays > MAX_DELIVERY_DAYS) {
     throw new StepError(`Delivery must be 1 to ${MAX_DELIVERY_DAYS} days. Over 28 days, PayPal holds the money one phase at a time.`);
   }
-  if (!input.title.trim() || input.needText.trim().length < 20) throw new StepError("Describe what you need in a sentence or more.");
+  if (!text(input.title).trim() || text(input.needText).trim().length < 20) throw new StepError("Describe what you need in a sentence or more.");
   // Money is integer cents in a 32-bit column, and the sandbox is not for fortunes.
   if (!Number.isInteger(input.budgetCents) || input.budgetCents < 5_000 || input.budgetCents > 100_000_000) {
     throw new StepError("Budget must be between 50 and 1,000,000.");
@@ -834,7 +867,7 @@ export async function publishTender(input: TenderInput, actor: string): Promise<
     data: {
       title: input.title.trim().slice(0, 120),
       needText: input.needText.trim().slice(0, 2000),
-      spec: { item: input.item, quantity: input.quantity, deliverTo: `${dest.city}, ${dest.country}`, deliveryDays: input.deliveryDays },
+      spec: { item: input.item.trim().slice(0, 80), quantity: input.quantity, deliverTo: `${dest.city}, ${dest.country}`, deliveryDays: input.deliveryDays },
       budgetCents: input.budgetCents,
       currency: dest.currency,
       destinationCountry: dest.country,
@@ -843,7 +876,7 @@ export async function publishTender(input: TenderInput, actor: string): Promise<
       status: "DRAFT",
       buyerId: actor,
       photos,
-      criteria: { create: input.criteria },
+      criteria: { create: input.criteria.map((c) => ({ name: c.name.trim(), weightPct: c.weightPct, rubric: text(c.rubric).trim() })) },
     },
   });
   await db.$transaction((tx) => move(tx, tender.id, "DRAFT", "OPEN"));
@@ -857,7 +890,7 @@ export function isUniqueViolation(error: unknown): boolean {
 }
 
 const PAYPAL_MESSAGES: Record<string, string> = {
-  PAYEE_ACCOUNT_INVALID: "PayPal does not know the seller's account. Set SELLER_D_PAYPAL_EMAIL to a sandbox business account and reset the demo.",
+  PAYEE_ACCOUNT_INVALID: "PayPal does not recognise the seller's PayPal email, so it cannot pay them. Ask the seller to check the email in their account.",
   PAYEE_ACCOUNT_RESTRICTED: "PayPal cannot pay the seller's account right now.",
   AUTHORIZATION_EXPIRED: "The PayPal hold has expired, so it can no longer pay the seller.",
   AUTHORIZATION_VOIDED: "PayPal has cancelled this hold, so it can no longer pay the seller.",

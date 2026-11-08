@@ -118,13 +118,12 @@ function monthly(txs: Transaction[], count = 4): MonthFlow[] {
   });
 }
 
-async function upcoming(tenders: TenderSummary[], sellerId?: string): Promise<UpcomingPayment[]> {
+async function upcoming(filter: { tenderIds: string[] } | { sellerId: string }): Promise<UpcomingPayment[]> {
   const awards = await db.award.findMany({
     where: {
-      tenderId: { in: tenders.map((t) => t.id) },
+      ...("tenderIds" in filter ? { tenderId: { in: filter.tenderIds } } : { bid: { sellerId: filter.sellerId } }),
       endedAt: null,
       authorizations: { some: { paypalAuthId: { not: null } } },
-      ...(sellerId ? { bid: { sellerId } } : {}),
     },
     include: {
       tender: { select: { title: true, currency: true } },
@@ -196,14 +195,13 @@ export async function buyerCashflow(buyerId: string) {
     tenders,
     totals,
     waiting: tenders.reduce((s, t) => s + t.waitingReplies, 0),
-    upcoming: await upcoming(tenders),
+    upcoming: await upcoming({ tenderIds: tenders.map((t) => t.id) }),
     transactions: [...txs].reverse(),
   };
 }
 
 /** What a seller has been paid and is still due, across the tenders they won. */
 export async function sellerCashflow(sellerId: string) {
-  const tenders = await listTenders();
   const txs = (await transactions({ sellerId })).filter((t) => t.kind === "payment");
   const received: Record<string, { cents: number; payments: number }> = {};
   for (const t of txs) {
@@ -214,6 +212,6 @@ export async function sellerCashflow(sellerId: string) {
   return {
     received,
     transactions: [...txs].reverse(),
-    upcoming: await upcoming(tenders, sellerId),
+    upcoming: await upcoming({ sellerId }),
   };
 }

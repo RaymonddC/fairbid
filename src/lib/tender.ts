@@ -24,7 +24,8 @@ export type TenderStatus = (typeof TENDER_STATUSES)[number];
 // buyer may end the order early: IN_DELIVERY to COMPLETE (`endOrder`).
 const TRANSITIONS: Record<TenderStatus, readonly TenderStatus[]> = {
   DRAFT: ["OPEN"],
-  OPEN: ["CLOSED"],
+  // Closed with no bids: nothing to compare or award.
+  OPEN: ["CLOSED", "CANCELLED"],
   CLOSED: ["REVIEWING"],
   REVIEWING: ["CLARIFYING", "PRICED"],
   CLARIFYING: ["PRICED"],

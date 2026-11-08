@@ -148,7 +148,8 @@ export function buildSellerServer(sellerId: string): McpServer {
     "get_my_bid_status",
     {
       title: "My bid's status",
-      description: "Where your bid stands: sealed, opened, questions waiting for your answer, and whether you won and what has been paid.",
+      description:
+        "Where your bid stands: sealed, opened, questions waiting for your answer, and whether you won, what has been paid, what is held now, and whether the next phase is held. Start a phase only once it is held.",
       inputSchema: { tender_id: z.string() },
       annotations: { readOnlyHint: true },
     },
@@ -161,7 +162,22 @@ export function buildSellerServer(sellerId: string): McpServer {
           has_bid: v.myBid !== null,
           sealed: v.myBid !== null && v.status === "OPEN",
           questions_waiting: v.questions.filter((q) => !q.myReply).map((q) => ({ clarification_id: q.id, question: q.question })),
-          won: v.won && { held: units(v.won.holdCents), paid: units(v.won.paidCents), currency: v.currency },
+          won: v.won && {
+            order_total: units(v.won.holdCents),
+            paid: units(v.won.paidCents),
+            held_now: units(v.won.heldCents),
+            currency: v.currency,
+            phases: v.won.phases,
+            complete: v.won.complete,
+            ended_early: v.won.endedAt !== null,
+            // Start work on a phase only once its money is held.
+            next: v.won.next.kind === "pay"
+              ? { phase: v.won.next.phase, held: true }
+              : v.won.next.kind === "hold"
+                ? { phase: v.won.next.phase, held: false, waiting_for: v.won.next.replacing ? "a new hold: the last one lapsed" : "the buyer to hold this phase" }
+                : null,
+            deposit: v.won.milestones[0] && { milestone: v.won.milestones[0].name, amount: units(v.won.milestones[0].plannedCents), non_refundable: true },
+          },
         };
       }),
   );

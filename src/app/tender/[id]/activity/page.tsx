@@ -73,6 +73,8 @@ function describe(
           p.status === "PENDING" ? ` PayPal is holding it: ${reasonText(String(p.reason ?? "")) ?? "it completes on its own"}.` : ""
         }`,
       };
+    case "tender.cancelled":
+      return { title: "Bidding closed with no bids", detail: "Nothing to compare or award. Nobody was charged anything." };
     case "hold.started":
       return {
         title: p.replacing
