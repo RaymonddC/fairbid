@@ -8,8 +8,9 @@ For recording the video and for a live demo. Target: under 3 minutes.
 2. Open the site once to wake it, or set `MIN_INSTANCES=1` for judging week (DEPLOY.md).
 3. Sign in as Anna (buyer). On the demo tender, press **Reset demo**: four sealed bids again, no award, no payments.
 4. Check the `SELLER_D_PAYPAL_EMAIL` repo variable holds Sari's sandbox business account. Without it PayPal refuses the award.
-5. Have the PayPal sandbox buyer login ready for the popup. Never a real account.
-6. Close other tabs and turn on do-not-disturb. Record at 1280 wide.
+5. Check the `PAYPAL_WEBHOOK_ID` repo variable is set. With it, a few seconds after each payment the activity log gains a line from PayPal itself ("Reported by PayPal's webhook"). Without it the flow still works; the log just has FairBid's lines only.
+6. Have the PayPal sandbox buyer login ready for the popup. Never a real account.
+7. Close other tabs and turn on do-not-disturb. Record at 1280 wide.
 
 ## Beats
 
@@ -22,7 +23,7 @@ For recording the video and for a live demo. Target: under 3 minutes.
 | 1:20 | Compare, **Delivered cost** | Switch from quoted price to delivered cost: duty, VAT and fees reorder the bids. B and C are flagged: prices 0.4% apart, the same text. A flag asks a person to look; it removes nothing. |
 | 1:45 | Award bid D | Anna picks Sari. PayPal holds EUR 2,540 in Anna's account with Sari as the payee. FairBid never touches the money. |
 | 2:10 | Pay milestones | 30% when production starts, 40% when shipped, the rest on delivery. The last capture is final and releases what was not used. |
-| 2:35 | Activity log | Every step is in a hash chain. Change one event and the tamper check breaks. |
+| 2:35 | Activity log | Every step is in a hash chain. Change one event and the tamper check breaks. Each payment has two lines: FairBid's, and PayPal's own webhook confirming it. |
 | 2:50 | Close | Fair for the buyer, fair for the small seller, paid by PayPal only on delivery. |
 
 ## If something goes wrong
@@ -35,12 +36,15 @@ For recording the video and for a live demo. Target: under 3 minutes.
 | PayPal refuses the award, payee invalid | `SELLER_D_PAYPAL_EMAIL` is wrong or empty. Fix it, then **Reset demo** |
 | Invite seller agents fails | Run them from a terminal (DEPLOY.md, "Seller agents"), or skip to the demo tender: its four bids are already in |
 | The demo tender is in a strange state | **Reset demo** |
+| No PayPal line appears in the log after a payment | PayPal delivers within seconds, sometimes a minute. Say nothing; FairBid's own line is already there. If it never comes, `PAYPAL_WEBHOOK_ID` is missing or stale (DEPLOY.md) |
+| A payment shows "PayPal is holding" | Sandbox eCheck or a review. Nothing is wrong: the step is recorded as pending and completes when PayPal reports back. Move on |
 
 ## Questions judges may ask
 
 - **Is this escrow?** No. PayPal authorizes the money in the buyer's account, in the seller's name. Nobody else holds it.
 - **Can the buyer cancel after award?** Not in this build. With the seller as payee, voiding a hold needs PayPal Multiparty, which the sandbox does not offer here. The final capture releases whatever was not used.
-- **What if delivery takes longer than 29 days?** The tender caps delivery at 28 days. Renewing a hold is not claimed until it is tested.
+- **What if delivery takes longer than 29 days?** The tender caps delivery at 28 days, because a PayPal hold is valid for 29 and cannot be extended: reauthorizing only renews the 3-day guarantee inside those 29. A two-month order would get one hold per phase, approved by the buyer as each phase starts. That is designed, not built.
+- **What if PayPal changes something after you recorded it?** PayPal's webhook tells us. A payment held for review shows as pending until PayPal completes or denies it; a denied payment reopens its step; a lapsed hold is shown as gone; a seller's refund is recorded. Every report is verified with PayPal and lands in the log as PayPal's own line.
 - **Does the AI choose the winner?** No. Code computes delivered cost, the cost and lead-time scores, and which bids look coordinated. The AI drafts, asks, and explains. The buyer decides.
 - **Can a seller see other bids?** No. Before close only the count leaves the server. Over MCP, an agent's key only ever reads its own bid.
 - **What does it cost?** See README, "Cost".

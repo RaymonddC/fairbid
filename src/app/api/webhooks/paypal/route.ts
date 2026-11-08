@@ -1,36 +1,42 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { appendEvent } from "@/lib/audit-store";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { createPayPalClient, loadConfig } from "@/lib/paypal/client";
+import { type WebhookEvent } from "@/lib/paypal/webhook";
+import { applyWebhook } from "@/lib/paypal-sync";
+import { createLimiter } from "@/lib/rate-limit";
 import { isUniqueViolation } from "@/lib/workflow";
 
-interface WebhookEvent {
-  id?: string;
-  event_type?: string;
-  resource?: { id?: string; status?: string; supplementary_data?: { related_ids?: { authorization_id?: string } } };
-}
+// Every request costs one verification call to PayPal, so a flood from one address
+// is turned away before that. PayPal's own retries are far below this.
+const byIp = createLimiter(120, 60_000);
 
 /** Anything that stops verification, missing config included, counts as not genuine. */
-async function isGenuine(req: NextRequest, event: WebhookEvent): Promise<boolean> {
+async function isGenuine(headers: Headers, rawBody: string): Promise<boolean> {
   try {
-    return await createPayPalClient(loadConfig()).verifyWebhook(req.headers, event);
+    return await createPayPalClient(loadConfig()).verifyWebhook(headers, rawBody);
   } catch {
     return false;
   }
 }
 
-/** PayPal retries until it gets a 2xx, so only a forged or unreadable request is
- * refused. An event we do not track is acknowledged and ignored. */
+/** PayPal retries until it gets a 2xx, up to 25 times over 3 days, so only a forged
+ * or unreadable request is refused. An event we do not track is acknowledged and ignored. */
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "unknown";
+  if (!byIp.hit(ip)) {
+    return NextResponse.json({ error: { code: "rate_limited", message: "Too many requests." } }, { status: 429 });
+  }
+
+  const raw = await req.text();
   let event: WebhookEvent;
   try {
-    event = (await req.json()) as WebhookEvent;
+    event = JSON.parse(raw) as WebhookEvent;
   } catch {
     return NextResponse.json({ error: { code: "bad_json", message: "Body is not JSON." } }, { status: 400 });
   }
 
-  if (!(await isGenuine(req, event))) {
+  if (!(await isGenuine(req.headers, raw))) {
     log.warn("webhook rejected", { eventType: event.event_type, webhookEventId: event.id });
     return NextResponse.json({ error: { code: "bad_signature", message: "Signature not verified." } }, { status: 401 });
   }
@@ -46,7 +52,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await apply(event);
+    const tenderId = await applyWebhook(event);
+    log.info("webhook applied", { eventType: event.event_type, webhookEventId: event.id, tenderId, matched: tenderId !== null });
   } catch (error) {
     // Forget the delivery so PayPal's retry is processed, not skipped as a duplicate.
     log.error("webhook processing failed", error, { eventType: event.event_type, webhookEventId: event.id });
@@ -54,34 +61,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: { code: "processing_failed", message: "Try again." } }, { status: 500 });
   }
   return NextResponse.json({ received: true });
-}
-
-/** Mirrors PayPal's view of a hold or capture we know about. Unknown ids are ignored. */
-async function apply(event: WebhookEvent) {
-  const authorizationId =
-    event.event_type?.startsWith("PAYMENT.CAPTURE.")
-      ? event.resource?.supplementary_data?.related_ids?.authorization_id
-      : event.resource?.id;
-  if (!authorizationId) return;
-
-  const authorization = await db.authorization.findUnique({
-    where: { paypalAuthId: authorizationId },
-    include: { award: { select: { tenderId: true } } },
-  });
-  if (!authorization) return;
-
-  if (event.event_type?.startsWith("PAYMENT.CAPTURE.") && event.resource?.id && event.resource.status) {
-    await db.capture.updateMany({
-      where: { paypalCaptureId: event.resource.id },
-      data: { status: event.resource.status },
-    });
-  } else if (event.event_type?.startsWith("PAYMENT.AUTHORIZATION.") && event.resource?.status) {
-    await db.authorization.update({ where: { id: authorization.id }, data: { status: event.resource.status } });
-  }
-
-  await appendEvent(authorization.award.tenderId, "paypal", event.event_type ?? "unknown", {
-    webhookId: event.id,
-    resourceId: event.resource?.id,
-    status: event.resource?.status,
-  });
 }

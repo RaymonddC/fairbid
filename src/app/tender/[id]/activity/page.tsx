@@ -5,6 +5,7 @@ import { verifyChain } from "@/lib/audit";
 import { getEvents } from "@/lib/audit-store";
 import { tenderView } from "@/lib/cached";
 import { dayTime, moneyFor } from "@/lib/format";
+import { reasonText } from "@/lib/paypal/webhook";
 import { getUser } from "@/lib/session";
 
 export const metadata = { title: "Activity · FairBid" };
@@ -56,15 +57,49 @@ function describe(
     case "milestone.paid":
       return {
         title: `${String(p.milestone ?? "Payment")}: ${money(p.amountCents)} paid${p.finalCapture ? ", final" : ""}`,
-        detail: `Capture ${String(p.paypalCaptureId ?? "")}${p.releasedCents ? `. ${money(p.releasedCents)} released, never charged.` : ""}`,
+        detail: `Capture ${String(p.paypalCaptureId ?? "")}${p.releasedCents ? `. ${money(p.releasedCents)} released, never charged.` : ""}${
+          p.status === "PENDING" ? ` PayPal is holding it: ${reasonText(String(p.reason ?? "")) ?? "it completes on its own"}.` : ""
+        }`,
       };
+    case "milestone.declined":
+      return {
+        title: `${String(p.milestone ?? "Payment")}: PayPal declined ${money(p.amountCents)}`,
+        detail: `Nothing was paid${p.reason ? `: ${reasonText(String(p.reason))}` : ""}. The step stays open.`,
+      };
+    // Reported by PayPal's webhook, not written by FairBid.
+    case "paypal.order.approved":
+      return { title: "PayPal: the buyer approved the hold in the PayPal window", detail: `Order ${String(p.paypalOrderId ?? "")}` };
+    case "paypal.hold.confirmed":
+      return { title: `PayPal confirmed the hold: ${money(p.amountCents)}`, detail: `Authorization ${String(p.paypalAuthId ?? "")}, status ${String(p.status ?? "")}` };
+    case "paypal.hold.released":
+      return {
+        title: "PayPal released the hold",
+        detail: p.status === "EXPIRED" ? "It reached its 29-day limit. Nothing more can be paid from it." : "Nothing more can be paid from it.",
+      };
+    case "paypal.payment.completed":
+      return { title: `PayPal confirmed the payment: ${money(p.amountCents)}`, detail: `${String(p.milestone ?? "")}. Capture ${String(p.paypalCaptureId ?? "")}` };
+    case "paypal.payment.pending":
+      return {
+        title: `PayPal is holding a payment: ${money(p.amountCents)}`,
+        detail: `${String(p.milestone ?? "")}: ${reasonText(String(p.reason ?? "")) ?? "it completes on its own"}. Capture ${String(p.paypalCaptureId ?? "")}`,
+      };
+    case "paypal.payment.denied":
+      return {
+        title: `PayPal denied a payment: ${money(p.amountCents)}`,
+        detail: `${String(p.milestone ?? "")}${p.reason ? `: ${reasonText(String(p.reason))}` : ""}. Nothing was paid; the step is open again.`,
+      };
+    case "paypal.payment.refunded":
+      return { title: `The seller refunded ${money(p.amountCents)} on PayPal`, detail: `${String(p.milestone ?? "")}. Refund ${String(p.refundId ?? "")}` };
+    case "paypal.payment.reversed":
+      return { title: `PayPal reversed a payment: ${money(p.amountCents)}`, detail: `${String(p.milestone ?? "")}. Capture ${String(p.paypalCaptureId ?? "")}` };
     default:
       return { title: kind };
   }
 }
 
+const GOOD_NEWS = new Set(["award.authorized", "milestone.paid", "paypal.order.approved", "paypal.hold.confirmed", "paypal.payment.completed"]);
 const tone = (kind: string) =>
-  kind.startsWith("milestone") || kind === "award.authorized" ? "bg-ok" : kind.startsWith("review") ? "bg-warn" : "bg-dye";
+  GOOD_NEWS.has(kind) ? "bg-ok" : kind.startsWith("review") || kind.startsWith("paypal.") || kind === "milestone.declined" ? "bg-warn" : "bg-dye";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
@@ -106,6 +141,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   </span>
                   {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
                   {e.actor.startsWith("agent:") && <span className="text-xs text-dye">By a seller agent, over MCP</span>}
+                  {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
                   <span className="ref text-[11px] text-faint">
                     #{e.seq} {e.actor}, hash {e.hash.slice(0, 10)}…
                   </span>

@@ -9,6 +9,7 @@ import { db } from "./db";
 import { holdCents, landedCost } from "./landed";
 import { log } from "./log";
 import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError, type PayPalClient } from "./paypal/client";
+import { isFailedCapture, reasonText } from "./paypal/webhook";
 import { explainPair, reviewProposals, scoreBlind } from "./ai/roles";
 import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED, type FixtureQuestion } from "./review-fixture";
 import {
@@ -439,20 +440,27 @@ export async function captureMilestone(
   });
   const auth = award.authorization;
   if (!auth?.paypalAuthId) throw new StepError("The hold is not in place yet.");
+  if (auth.status === "VOIDED" || auth.status === "EXPIRED") {
+    throw new StepError(auth.status === "EXPIRED" ? PAYPAL_MESSAGES.AUTHORIZATION_EXPIRED : PAYPAL_MESSAGES.AUTHORIZATION_VOIDED);
+  }
+
+  // A capture PayPal declined or denied paid nothing, so that step is still open.
+  const paidCapture = (m: (typeof award.milestones)[number]) => (m.capture && !isFailedCapture(m.capture.status) ? m.capture : null);
 
   // A second click on a step that is already paid gets the same answer, not an error.
   const asked = award.milestones.find((m) => m.id === milestoneId);
-  if (asked?.capture) {
+  const askedCapture = asked ? paidCapture(asked) : null;
+  if (asked && askedCapture) {
     const last = asked === award.milestones[award.milestones.length - 1];
-    const paidSoFar = award.milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0);
-    return { captureId: asked.capture.paypalCaptureId ?? "", releasedCents: last ? award.holdCents - paidSoFar : 0, final: last };
+    const paidSoFar = award.milestones.reduce((s, m) => s + (paidCapture(m)?.amountCents ?? 0), 0);
+    return { captureId: askedCapture.paypalCaptureId ?? "", releasedCents: last ? award.holdCents - paidSoFar : 0, final: last };
   }
-  const next = award.milestones.find((m) => !m.capture);
+  const next = award.milestones.find((m) => !paidCapture(m));
   if (!next || next.id !== milestoneId) throw new StepError("Pay the steps in order.");
   const planned = milestoneAmounts(award.holdCents, award.milestones.map((m) => ({ name: m.name, pct: m.pct })));
   const index = award.milestones.indexOf(next);
   const final = index === award.milestones.length - 1;
-  const paid = award.milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0);
+  const paid = award.milestones.reduce((s, m) => s + (paidCapture(m)?.amountCents ?? 0), 0);
   const remaining = award.holdCents - paid;
 
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new StepError("Enter an amount above €0.");
@@ -461,37 +469,49 @@ export async function captureMilestone(
   }
 
   // The request id is the milestone: a retry, a double click or a lost answer all get
-  // PayPal's first answer back, so a step can never be paid twice.
-  let cap: { id: string; status: string };
+  // PayPal's first answer back, so a step can never be paid twice. After a capture
+  // PayPal refused, the id changes, so the next try is a new request and not the
+  // refusal replayed.
+  const failed = next.capture;
+  const requestId = failed ? `capture-${next.id}-after-${failed.paypalCaptureId ?? failed.id}` : `capture-${next.id}`;
+  let cap: { id: string; status: string; status_details?: { reason?: string } };
   try {
     cap = await pp().captureAuthorization({
       authorizationId: auth.paypalAuthId,
       currency: award.tender.currency,
       amountCents,
       finalCapture: final,
-      requestId: `capture-${next.id}`,
+      requestId,
     });
   } catch (error) {
     const dead = error instanceof PayPalError ? DEAD_HOLD[error.issue ?? ""] : undefined;
     if (dead) await db.authorization.update({ where: { id: auth.id }, data: { status: dead } });
     throw error;
   }
-  if (cap.status === "DECLINED" || cap.status === "FAILED") {
-    throw new StepError("PayPal declined this payment, so nothing was paid. The hold is still in place.");
+
+  const row = {
+    authorizationId: auth.id,
+    milestoneId: next.id,
+    paypalCaptureId: cap.id,
+    amountCents,
+    finalCapture: final,
+    status: cap.status,
+    statusReason: cap.status_details?.reason ?? null,
+    refundedCents: 0,
+  };
+  if (isFailedCapture(cap.status)) {
+    // Recorded so the next try carries a new request id; the step stays open.
+    await db.capture.upsert({ where: { milestoneId: next.id }, create: row, update: row }).catch(() => undefined);
+    await appendEvent(tenderId, actor, "milestone.declined", { milestone: next.name, amountCents, paypalCaptureId: cap.id, reason: cap.status_details?.reason });
+    throw new StepError(
+      `PayPal declined this payment${reasonText(cap.status_details?.reason) ? `: ${reasonText(cap.status_details?.reason)}` : ""}. Nothing was paid; the hold is still in place.`,
+    );
   }
 
   try {
     await db.$transaction(async (tx) => {
-      await tx.capture.create({
-        data: {
-          authorizationId: auth.id,
-          milestoneId: next.id,
-          paypalCaptureId: cap.id,
-          amountCents,
-          finalCapture: final,
-          status: cap.status,
-        },
-      });
+      // A refused capture from an earlier try is replaced by this one.
+      await tx.capture.upsert({ where: { milestoneId: next.id }, create: row, update: row });
       await tx.milestone.update({ where: { id: next.id }, data: { status: "captured" } });
       if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
       if (final) {
@@ -509,6 +529,8 @@ export async function captureMilestone(
     amountCents,
     finalCapture: final,
     paypalCaptureId: cap.id,
+    status: cap.status,
+    reason: cap.status_details?.reason,
     releasedCents: final ? remaining - amountCents : 0,
   });
   return { captureId: cap.id, releasedCents: final ? remaining - amountCents : 0, final };

@@ -16,7 +16,13 @@ An authorization reserves money in the buyer's account. It does not move it. If 
 
 ## Delivery fits inside 29 days
 
-An authorization is honored for 3 days and stays valid for 29. The delivery window is capped inside that. Reauthorization is not claimed until the retest due on 10 Nov passes.
+A PayPal authorization is valid for 29 days. Within them, a capture is guaranteed for the first 3 days (the honor period); after that it is still allowed, but subject to the buyer's funds. Reauthorizing after the honor period confirms the funds and starts a new 3-day honor period, as often as needed, but it never extends the 29 days: PayPal's reference says that after 30 days a new authorization is required. So the delivery window is capped at 28 days inside the hold, and FairBid does not reauthorize until the retest due on 10 Nov passes.
+
+An order that needs longer than 29 days, say a two-month production run, cannot be covered by one hold. The honest design is one hold per phase: the buyer approves a hold for the phase about to start, it is captured as that phase is delivered, and the next phase gets its own hold. This is not built; see "Not built yet" in the README.
+
+## PayPal's webhook is the second witness
+
+FairBid records each money step from PayPal's answer to its own call. PayPal's webhook then reports the same step from PayPal's side, plus anything that changes later: a payment held for review that completes or is denied days on, a hold that lapses, a seller who refunds from their own account. Each report is verified with PayPal, applied once, and appended to the tender's event log as actor `paypal`, so the log shows two independent sources for every payment. A record only moves forward; a payment denied after the fact reopens its step so the buyer can pay it again.
 
 ## In-app inbox first
 

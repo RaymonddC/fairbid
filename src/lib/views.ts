@@ -81,7 +81,12 @@ export interface CaptureView {
   paypalCaptureId: string | null;
   amountCents: number;
   final: boolean;
+  /** PayPal's: COMPLETED, PENDING, DECLINED, DENIED, FAILED, PARTIALLY_REFUNDED or REFUNDED. */
   status: string;
+  /** PayPal's reason while PENDING or DENIED. */
+  reason: string | null;
+  /** Refunded by the seller from their own PayPal account. */
+  refundedCents: number;
 }
 
 export interface MilestoneView {
@@ -106,7 +111,10 @@ export interface AwardView {
   photos: string[];
   authorization: { status: string; paypalOrderId: string; paypalAuthId: string | null; expiresAt: string | null; amountCents: number } | null;
   milestones: MilestoneView[];
+  /** Taken from the hold by captures PayPal accepted, pending ones included. */
   paidCents: number;
+  /** Given back by the seller afterwards, from their own account. */
+  refundedCents: number;
   /** Released back to the buyer by the final capture. */
   releasedCents: number;
   complete: boolean;

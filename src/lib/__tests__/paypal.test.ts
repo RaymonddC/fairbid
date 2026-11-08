@@ -70,6 +70,13 @@ function fakeFetch(responses: { status?: number; body: unknown }[]) {
 }
 
 const CONFIG = { clientId: "id", secret: "secret", webhookId: "wh" };
+const SIGNED = new Headers({
+  "paypal-auth-algo": "SHA256withRSA",
+  "paypal-cert-url": "https://api.sandbox.paypal.com/v1/notifications/certs/CERT-1",
+  "paypal-transmission-id": "tid-1",
+  "paypal-transmission-sig": "sig==",
+  "paypal-transmission-time": "2026-11-08T05:00:00Z",
+});
 
 describe("client", () => {
   it("only ever calls the sandbox host", async () => {
@@ -130,7 +137,7 @@ describe("client", () => {
 
   it("never retries a request that has no idempotency key", async () => {
     const { impl, calls } = fakeFetch([{ status: 503, body: { name: "SERVICE_UNAVAILABLE" } }]);
-    await assert.rejects(() => createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).verifyWebhook(new Headers(), {}));
+    await assert.rejects(() => createPayPalClient(CONFIG, impl, { retryDelaysMs: [0, 0] }).verifyWebhook(SIGNED, "{}"));
     assert.equal(calls.length, 2); // token + one attempt
   });
 
@@ -181,6 +188,24 @@ describe("client", () => {
 
   it("rejects webhooks when no webhook id is configured", async () => {
     const client = createPayPalClient({ clientId: "id", secret: "secret" }, fakeFetch([]).impl);
-    assert.equal(await client.verifyWebhook(new Headers(), {}), false);
+    assert.equal(await client.verifyWebhook(SIGNED, "{}"), false);
+  });
+
+  it("rejects a webhook missing a signature header without asking PayPal", async () => {
+    const { impl, calls } = fakeFetch([]);
+    assert.equal(await createPayPalClient(CONFIG, impl).verifyWebhook(new Headers(), "{}"), false);
+    assert.equal(calls.length, 0);
+  });
+
+  it("sends the webhook body to PayPal byte for byte, inside the verification request", async () => {
+    const { impl, calls } = fakeFetch([{ status: 200, body: { verification_status: "SUCCESS" } }]);
+    const raw = '{"id":"WH-1","resource":{"amount":{"value":"762.00"}},"event_type":"PAYMENT.CAPTURE.COMPLETED"}';
+    assert.equal(await createPayPalClient(CONFIG, impl).verifyWebhook(SIGNED, raw), true);
+    const sent = String(calls[1].init.body);
+    assert.ok(sent.endsWith(`,"webhook_event":${raw}}`), sent);
+    const parsed = JSON.parse(sent) as Record<string, unknown>;
+    assert.equal(parsed.webhook_id, "wh");
+    assert.equal(parsed.transmission_id, "tid-1");
+    assert.deepEqual(parsed.webhook_event, JSON.parse(raw));
   });
 });

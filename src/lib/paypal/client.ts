@@ -100,7 +100,7 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
     return token.value;
   }
 
-  async function call<T>(path: string, init: { method: string; body?: unknown; requestId?: string }): Promise<T> {
+  async function call<T>(path: string, init: { method: string; body?: unknown; rawBody?: string; requestId?: string }): Promise<T> {
     const res = await send(
       `${SANDBOX_BASE}${path}`,
       {
@@ -113,7 +113,7 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
           // after a timeout cannot capture twice.
           ...(init.requestId ? { "PayPal-Request-Id": init.requestId } : {}),
         },
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        body: init.rawBody ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),
       },
       init.method === "GET" || Boolean(init.requestId),
     );
@@ -165,7 +165,7 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
       finalCapture: boolean;
       requestId: string;
     }) {
-      return call<{ id: string; status: string }>(
+      return call<{ id: string; status: string; status_details?: { reason?: string } }>(
         `/v2/payments/authorizations/${encodeURIComponent(input.authorizationId)}/capture`,
         {
           method: "POST",
@@ -194,20 +194,23 @@ export function createPayPalClient(config: PayPalConfig, fetchImpl: Fetch = fetc
       );
     },
 
-    /** Asks PayPal whether a webhook is genuine. Fails closed with no webhook id. */
-    async verifyWebhook(headers: Headers, event: unknown): Promise<boolean> {
+    /** Asks PayPal whether a webhook is genuine. Fails closed with no webhook id.
+     * `rawBody` is the request body exactly as received: the signature covers those
+     * bytes, and a parsed-then-reserialized copy can fail verification. */
+    async verifyWebhook(headers: Headers, rawBody: string): Promise<boolean> {
       if (!config.webhookId) return false;
+      const fields = {
+        auth_algo: headers.get("paypal-auth-algo"),
+        cert_url: headers.get("paypal-cert-url"),
+        transmission_id: headers.get("paypal-transmission-id"),
+        transmission_sig: headers.get("paypal-transmission-sig"),
+        transmission_time: headers.get("paypal-transmission-time"),
+        webhook_id: config.webhookId,
+      };
+      if (Object.values(fields).some((v) => !v)) return false;
       const result = await call<{ verification_status: string }>("/v1/notifications/verify-webhook-signature", {
         method: "POST",
-        body: {
-          auth_algo: headers.get("paypal-auth-algo"),
-          cert_url: headers.get("paypal-cert-url"),
-          transmission_id: headers.get("paypal-transmission-id"),
-          transmission_sig: headers.get("paypal-transmission-sig"),
-          transmission_time: headers.get("paypal-transmission-time"),
-          webhook_id: config.webhookId,
-          webhook_event: event,
-        },
+        rawBody: `${JSON.stringify(fields).slice(0, -1)},"webhook_event":${rawBody}}`,
       });
       return result.verification_status === "SUCCESS";
     },

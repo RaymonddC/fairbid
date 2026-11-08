@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { authorizeAwardAction, payMilestoneAction, startAwardAction } from "@/app/actions";
 import { countryName, day, moneyFor } from "@/lib/format";
-import { atLeast, rankBids, type AwardView, type MilestoneView, type TenderView } from "@/lib/views";
+import { isFailedCapture, reasonText } from "@/lib/paypal/webhook";
+import { atLeast, rankBids, type AwardView, type CaptureView, type MilestoneView, type TenderView } from "@/lib/views";
 import { notifySuccess } from "./ActionButton";
 import { Confirm } from "./Confirm";
 import { PayPalButton } from "./PayPalButton";
@@ -93,20 +94,36 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
 
 type Pending = { milestone: MilestoneView; amountCents: number; final: boolean };
 
+/** The capture that paid this step, if PayPal accepted one. A declined or denied capture paid nothing. */
+const paidOf = (m: MilestoneView): CaptureView | null => (m.capture && !isFailedCapture(m.capture.status) ? m.capture : null);
+
 function Payments({ t, award }: { t: TenderView; award: AwardView }) {
   const eur = moneyFor(t.currency);
   const [finalAmount, setFinalAmount] = useState<number | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
 
   const auth = award.authorization!;
-  const next = award.milestones.find((m) => !m.capture);
+  const holdGone = !award.complete && (auth.status === "VOIDED" || auth.status === "EXPIRED");
+  const next = holdGone ? undefined : award.milestones.find((m) => !paidOf(m));
   const remaining = award.holdCents - award.paidCents;
-  const onHold = award.complete ? 0 : remaining;
+  const onHold = award.complete || holdGone ? 0 : remaining;
   const lastValue = finalAmount ?? remaining;
   const first = award.sellerName;
 
   return (
     <div className="grid gap-6">
+      {holdGone && (
+        <Panel className="fade-in grid gap-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-base">The PayPal hold is gone</h2>
+            <Pill tone="warn">{auth.status === "EXPIRED" ? "Hold ran out" : "Hold cancelled"}</Pill>
+          </div>
+          <p className="text-sm text-muted">
+            PayPal reported that the hold {auth.status === "EXPIRED" ? "reached its 29-day limit" : "was cancelled"}. {eur(remaining)} went back to
+            your account on its own; what was already paid to {first} stays paid. Nothing more can be paid from this hold.
+          </p>
+        </Panel>
+      )}
       {award.complete && (
         <Panel className="fade-in grid gap-5" featured>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -149,7 +166,10 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
               {award.milestones.map((m, i) => {
                 const current = next?.id === m.id;
                 const isLast = i === award.milestones.length - 1;
-                const amount = m.capture ? m.capture.amountCents : current && isLast ? lastValue : m.plannedCents;
+                const paid = paidOf(m);
+                const waiting = paid?.status === "PENDING";
+                const refused = m.capture && !paid ? m.capture : null;
+                const amount = paid ? paid.amountCents : current && isLast ? lastValue : m.plannedCents;
                 return (
                   <li
                     key={m.id}
@@ -157,22 +177,45 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
                   >
                     <span
                       className={`num mt-0.5 grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
-                        m.capture ? "bg-ok text-canvas" : current ? "bg-dye text-canvas" : "bg-canvas text-muted ring-1 ring-inset ring-line-strong"
+                        paid
+                          ? waiting
+                            ? "bg-warn text-canvas"
+                            : "bg-ok text-canvas"
+                          : current
+                            ? "bg-dye text-canvas"
+                            : "bg-canvas text-muted ring-1 ring-inset ring-line-strong"
                       }`}
                       aria-hidden="true"
                     >
-                      {m.capture ? "✓" : i + 1}
+                      {paid ? (waiting ? "…" : "✓") : i + 1}
                     </span>
                     <div className="grid gap-0.5">
                       <span className="text-sm font-medium">
                         {m.name}
-                        <span className="sr-only">{m.capture ? ", paid" : current ? ", next" : ""}</span>
+                        <span className="sr-only">{paid ? (waiting ? ", pending at PayPal" : ", paid") : current ? ", next" : ""}</span>
                       </span>
                       <span className="text-sm text-muted">{m.pct}% of the hold</span>
-                      {m.capture && (
+                      {paid && !waiting && (
                         <span className="text-xs text-ok">
-                          Paid {eur(m.capture.amountCents)} to {first}. Capture <span className="ref">{m.capture.paypalCaptureId}</span>
-                          {m.capture.final && award.releasedCents > 0 ? `. ${eur(award.releasedCents)} released, never charged.` : ""}
+                          Paid {eur(paid.amountCents)} to {first}. Capture <span className="ref">{paid.paypalCaptureId}</span>
+                          {paid.final && award.releasedCents > 0 ? `. ${eur(award.releasedCents)} released, never charged.` : ""}
+                        </span>
+                      )}
+                      {paid && waiting && (
+                        <span className="text-xs text-warn">
+                          PayPal is holding {eur(paid.amountCents)} for {first}: {reasonText(paid.reason) ?? "it completes on its own"}. Capture{" "}
+                          <span className="ref">{paid.paypalCaptureId}</span>. This page updates when PayPal reports back.
+                        </span>
+                      )}
+                      {paid && paid.refundedCents > 0 && (
+                        <span className="text-xs text-warn">
+                          {first} refunded {eur(paid.refundedCents)} from their own PayPal account, reported by PayPal.
+                        </span>
+                      )}
+                      {refused && (
+                        <span className="text-xs text-flag">
+                          PayPal declined {eur(refused.amountCents)}{reasonText(refused.reason) ? `: ${reasonText(refused.reason)}` : ""}. Nothing was
+                          paid; this step is open again.
                         </span>
                       )}
                       {current && isLast && (
@@ -207,7 +250,7 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
                 );
               })}
             </ol>
-            {!award.complete && auth.expiresAt && (
+            {!award.complete && !holdGone && auth.expiresAt && (
               <p className="px-1 text-sm text-muted">
                 Seller can&apos;t deliver? Don&apos;t confirm the next step. Nothing more is captured, and PayPal lets the hold lapse on{" "}
                 {day(auth.expiresAt)}.
@@ -223,11 +266,12 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
               <p className="num text-2xl font-semibold">{eur(onHold)}</p>
               <p className="text-xs text-muted">Held on your PayPal account, payable only to {first}. FairBid never holds your money.</p>
             </div>
-            <Meter hold={award.holdCents} paid={award.paidCents} onHold={onHold} released={award.releasedCents} fmt={eur} />
+            <Meter hold={award.holdCents} paid={award.paidCents} onHold={onHold} released={holdGone ? remaining : award.releasedCents} fmt={eur} />
             <dl className="grid gap-2 text-sm">
               <MoneyRow label="Still held" value={eur(onHold)} dot="bg-dye/40" />
               <MoneyRow label={`Paid to ${first}`} value={eur(award.paidCents)} dot="bg-dye" />
-              <MoneyRow label="Released to you" value={eur(award.releasedCents)} dot="bg-faint" />
+              {award.refundedCents > 0 && <MoneyRow label={`Refunded by ${first}`} value={eur(award.refundedCents)} dot="bg-warn" />}
+              <MoneyRow label="Released to you" value={eur(holdGone ? remaining : award.releasedCents)} dot="bg-faint" />
             </dl>
           </Panel>
           <Panel className="grid gap-2 text-sm">

@@ -24,7 +24,24 @@ The script asks for the PayPal values, hiding the secret as you type, or reads `
 ## After the first deploy
 
 1. Open `<service url>/api/ready` and fix whatever it reports.
-2. Add a sandbox webhook pointing at `<service url>/api/webhooks/paypal`, then set the `PAYPAL_WEBHOOK_ID` repo variable and redeploy.
+2. Register the PayPal webhook with the same sandbox app credentials (no dashboard login needed), then set the `PAYPAL_WEBHOOK_ID` repo variable and redeploy:
+
+   ```bash
+   TOKEN=$(curl -s -u "$PAYPAL_CLIENT_ID:$PAYPAL_SECRET" -d grant_type=client_credentials https://api-m.sandbox.paypal.com/v1/oauth2/token | jq -r .access_token)
+   curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" https://api-m.sandbox.paypal.com/v1/notifications/webhooks -d '{
+     "url": "<service url>/api/webhooks/paypal",
+     "event_types": [
+       {"name":"CHECKOUT.ORDER.APPROVED"},
+       {"name":"PAYMENT.AUTHORIZATION.CREATED"},{"name":"PAYMENT.AUTHORIZATION.VOIDED"},
+       {"name":"PAYMENT.CAPTURE.PENDING"},{"name":"PAYMENT.CAPTURE.COMPLETED"},
+       {"name":"PAYMENT.CAPTURE.DECLINED"},{"name":"PAYMENT.CAPTURE.DENIED"},
+       {"name":"PAYMENT.CAPTURE.REFUNDED"},{"name":"PAYMENT.CAPTURE.REVERSED"}
+     ]}' | jq -r .id
+   gh variable set PAYPAL_WEBHOOK_ID --body "<the id printed>"
+   gh workflow run deploy.yml
+   ```
+
+   These nine events are the ones `src/lib/paypal/webhook.ts` reads. PayPal delivers only to port 443 and retries a failed delivery up to 25 times over 3 days. `GET .../v1/notifications/webhooks` with the same token lists what is registered.
 3. Set the `PUBLIC_BASE_URL` repo variable to the service URL. Twilio needs it, so it can wait until WhatsApp is on.
 
 Settings belong in repo variables, never set by hand on the service: every deploy replaces the service's variables with the ones in `deploy.yml`, so a value set in the console disappears on the next push.

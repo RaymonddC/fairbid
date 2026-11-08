@@ -31,7 +31,9 @@ const TRANSITIONS: Record<TenderStatus, readonly TenderStatus[]> = {
   SCORED: ["AWARDED", "CANCELLED"],
   AWARDED: ["IN_DELIVERY"],
   IN_DELIVERY: ["COMPLETE"],
-  COMPLETE: [],
+  // The one step back: PayPal's webhook reports that the final payment, accepted at
+  // first, was denied afterwards. Only the webhook takes this transition.
+  COMPLETE: ["IN_DELIVERY"],
   CANCELLED: [],
 };
 

@@ -238,6 +238,10 @@ model Capture {
   amountCents     Int
   finalCapture    Boolean @default(false)
   status          String
+  // PayPal's reason when the status is PENDING or DENIED (its status_details.reason).
+  statusReason    String?
+  // Refunded by the seller from their own PayPal account, reported by webhook.
+  refundedCents   Int     @default(0)
 
   authorization Authorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade)
   milestone     Milestone     @relation(fields: [milestoneId], references: [id])

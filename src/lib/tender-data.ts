@@ -3,6 +3,7 @@
 
 import { db } from "./db";
 import { holdCents, landedCost, type TariffInput } from "./landed";
+import { isFailedCapture } from "./paypal/webhook";
 import { DEMO_QUESTIONS } from "./review-fixture";
 import { bidLetter, criterionKind, weightedTotal } from "./scoring";
 import { isSealed, milestoneAmounts, type TenderStatus } from "./tender";
@@ -100,10 +101,16 @@ function milestoneViews(award: NonNullable<Loaded["award"]>): MilestoneView[] {
           amountCents: m.capture.amountCents,
           final: m.capture.finalCapture,
           status: m.capture.status,
+          reason: m.capture.statusReason,
+          refundedCents: m.capture.refundedCents,
         }
       : null,
   }));
 }
+
+/** Money PayPal took from the hold: a declined or denied capture paid nothing. */
+const paidOf = (m: MilestoneView) => (m.capture && !isFailedCapture(m.capture.status) ? m.capture : null);
+const sumPaid = (ms: MilestoneView[]) => ms.reduce((s, m) => s + (paidOf(m)?.amountCents ?? 0), 0);
 
 /** The buyer's view of one tender. */
 export async function getTenderView(id: string): Promise<TenderView | null> {
@@ -199,8 +206,9 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
     const win = t.bids.find((b) => b.id === t.award!.bidId)!;
     const view = bids.find((b) => b.id === win.id);
     const milestones = milestoneViews(t.award);
-    const paidCents = milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0);
-    const complete = milestones.some((m) => m.capture?.final);
+    const paidCents = sumPaid(milestones);
+    const refundedCents = milestones.reduce((s, m) => s + (paidOf(m)?.refundedCents ?? 0), 0);
+    const complete = milestones.some((m) => paidOf(m)?.final);
     const a = t.award.authorization;
     award = {
       bidId: win.id,
@@ -222,6 +230,7 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
         : null,
       milestones,
       paidCents,
+      refundedCents,
       releasedCents: complete ? t.award.holdCents - paidCents : 0,
       complete,
       holdDaysLeft: a?.expiresAt ? Math.ceil((a.expiresAt.getTime() - Date.now()) / 86_400_000) : null,
@@ -303,7 +312,7 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
         myReply: c.replies.find((r) => r.bidId === mine?.id)?.body ?? null,
       })),
     won: won
-      ? { holdCents: won.holdCents, paidCents: milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0), milestones }
+      ? { holdCents: won.holdCents, paidCents: sumPaid(milestones), milestones }
       : null,
   };
 }
