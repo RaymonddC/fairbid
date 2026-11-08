@@ -19,7 +19,8 @@ export async function relayClarification(clarificationId: string): Promise<void>
     const answered = new Set(c.replies.map((r) => r.bidId));
     const bids = await db.bid.findMany({ where: { tenderId: c.tenderId, sellerId: { in: sentTo } }, select: { id: true, sellerId: true } });
     const links = await db.channelLink.findMany({ where: { sellerId: { in: sentTo } } });
-    const text = formatQuestion(c.tender.title, c.question);
+    const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+    const text = formatQuestion(c.tender.title, c.question, base ? `${base}/tender/${c.tenderId}` : undefined);
 
     await Promise.allSettled(
       links.flatMap((link) => {

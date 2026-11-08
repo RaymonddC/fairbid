@@ -30,7 +30,8 @@ export interface Channel {
 }
 
 /** Text of a question as a seller sees it in a chat. Plain text: nothing to escape. */
-export function formatQuestion(tenderTitle: string, question: string): string {
+/** `tenderUrl` points the seller at the tender page, where the details and the in-app inbox are. */
+export function formatQuestion(tenderTitle: string, question: string, tenderUrl?: string): string {
   const title = tenderTitle.length > 120 ? `${tenderTitle.slice(0, 117)}...` : tenderTitle;
   return [
     `FairBid: a buyer has a question about your bid on "${title}".`,
@@ -38,6 +39,7 @@ export function formatQuestion(tenderTitle: string, question: string): string {
     question,
     "",
     "Reply to this message to answer. An answer cannot change your price.",
+    ...(tenderUrl ? ["", `See the tender, or answer in FairBid: ${tenderUrl}`] : []),
   ].join("\n");
 }
 

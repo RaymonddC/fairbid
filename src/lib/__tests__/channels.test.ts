@@ -90,6 +90,8 @@ test("question text and masking", () => {
   assert.match(t, /Napkins/);
   assert.match(t, /Can you ship in 3 weeks\?/);
   assert.match(formatQuestion("x".repeat(300), "q"), /\.\.\./);
+  assert.doesNotMatch(t, /https?:/);
+  assert.match(formatQuestion("Napkins", "q?", "https://example.test/tender/abc"), /https:\/\/example\.test\/tender\/abc/);
   assert.equal(maskAddress("whatsapp", "+6281234567890"), "+62••••••••890");
   assert.ok(!maskAddress("telegram", "555").includes("555"));
 });
