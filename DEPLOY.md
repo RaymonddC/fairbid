@@ -52,13 +52,12 @@ To reset the hosted demo data, run the **Deploy to Cloud Run** workflow by hand 
 
 The in-app inbox needs none of this. A channel switches on only when all of its settings exist; `/api/ready` lists each as `channel_telegram` and `channel_whatsapp`.
 
-**Create the Secret Manager secrets before the first deploy that contains this change.** `deploy.yml` maps them, and Cloud Run refuses to deploy a service whose secret does not exist. Put real values in; an empty or dummy value would make the channel look configured.
+**Create the Secret Manager secrets before the first deploy that contains this change (the two Telegram ones).** `deploy.yml` maps them, and Cloud Run refuses to deploy a service whose secret does not exist. Put real values in; an empty or dummy value would make the channel look configured.
 
 ```bash
 # Value on stdin, never on the command line. Project harvest-511117 here; use yours.
 printf '%s' "<bot token from @BotFather>"   | gcloud secrets create fairbid-telegram-bot-token --data-file=- --project <project>
 printf '%s' "$(openssl rand -hex 24)"       | gcloud secrets create fairbid-telegram-webhook-secret --data-file=- --project <project>
-printf '%s' "<Twilio auth token>"           | gcloud secrets create fairbid-twilio-auth-token --data-file=- --project <project>
 ```
 
 Then set the repo variables below and deploy.
@@ -70,7 +69,7 @@ npm run channels:telegram -- set
 npm run channels:telegram -- info
 ```
 
-**WhatsApp (Twilio sandbox).** Set `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_FROM` (the sandbox number, for example `+14155238886`) and `CHANNEL_ALLOWLIST` (the E.164 numbers of the people who will link, separated by semicolons). In the Twilio console, Messaging, Try it out, Send a WhatsApp message, Sandbox settings: set "When a message comes in" to `<service url>/api/webhooks/whatsapp` with method POST. Each person joins the sandbox from their phone with the join phrase shown there. Twilio signs the exact URL, so `PUBLIC_BASE_URL` must be the service URL with no trailing slash and no path.
+**WhatsApp (Twilio sandbox).** First create the secret `fairbid-twilio-auth-token` (same `gcloud secrets create ... --data-file=-` pattern, value on stdin), then add `,TWILIO_AUTH_TOKEN=fairbid-twilio-auth-token:latest` to `--set-secrets` in `deploy.yml`: it is not mapped yet, because a missing secret would fail every deploy. Set `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_FROM` (the sandbox number, for example `+14155238886`) and `CHANNEL_ALLOWLIST` (the E.164 numbers of the people who will link, separated by semicolons). In the Twilio console, Messaging, Try it out, Send a WhatsApp message, Sandbox settings: set "When a message comes in" to `<service url>/api/webhooks/whatsapp` with method POST. Each person joins the sandbox from their phone with the join phrase shown there. Twilio signs the exact URL, so `PUBLIC_BASE_URL` must be the service URL with no trailing slash and no path.
 
 A seller then presses **Link** on the dashboard and sends the code from their chat. Twilio's sandbox accepts free text only within 24 hours of the seller's last message to it; a seller who has not written in a day will not get the question there (the inbox still has it), so send `link` or any message shortly before a demo.
 
