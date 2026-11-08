@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { closeBiddingAction } from "@/app/actions";
+import { closeBiddingAction, inviteAgentsAction } from "@/app/actions";
 import { countryName, dayTime, moneyFor } from "@/lib/format";
 import type { BidView, TenderView } from "@/lib/views";
 import { ActionButton } from "./ActionButton";
@@ -78,6 +78,14 @@ export function SealedBids({ t }: { t: TenderView }) {
                 Close bidding now
               </ActionButton>
               <p className="text-xs text-faint">Demo shortcut. A real tender opens at its deadline.</p>
+              <ActionButton
+                action={() => inviteAgentsAction(t.id)}
+                variant="secondary"
+                busy="Seller agents are bidding…"
+                success={["Seller agents have bid", "Four seller agents read your tender over MCP and sealed their bids."]}
+              >
+                Invite seller agents
+              </ActionButton>
             </>
           ) : (
             <>
@@ -90,6 +98,16 @@ export function SealedBids({ t }: { t: TenderView }) {
               <Link href={`/tender/${t.id}/review`} className={linkButton.primary}>
                 {questions ? `See the ${questions} questions` : "See the review"}
               </Link>
+              {t.waitingReplies > 0 && (
+                <ActionButton
+                  action={() => inviteAgentsAction(t.id)}
+                  variant="secondary"
+                  busy="Seller agents are answering…"
+                  success={["Seller agents answered", "Their replies are with the questions. No price changed."]}
+                >
+                  Let seller agents answer
+                </ActionButton>
+              )}
               <Link href={`/tender/${t.id}/compare`} className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink">
                 Skip to delivered cost
               </Link>

@@ -90,6 +90,14 @@ gcloud secrets describe fairbid-db-password >/dev/null 2>&1 ||
   put_secret fairbid-db-password "$(openssl rand -hex 24)"
 DB_PASSWORD="$(gcloud secrets versions access latest --secret=fairbid-db-password)"
 put_secret fairbid-paypal-secret "$PAYPAL_SECRET"
+# Keys for the four demo seller agents at /api/mcp, made once.
+if ! gcloud secrets describe fairbid-mcp-seller-keys >/dev/null 2>&1; then
+  KEYS=""; for s in a b c d; do KEYS="${KEYS},seller-${s}:$(openssl rand -hex 24)"; done
+  put_secret fairbid-mcp-seller-keys "${KEYS#,}"
+fi
+# The Anthropic key starts blank (the AI roles use their fixtures). Add a real version
+# in Secret Manager to turn the AI on; a blank one turns it off again.
+gcloud secrets describe fairbid-anthropic-key >/dev/null 2>&1 || put_secret fairbid-anthropic-key " "
 # Cloud Run reaches Cloud SQL over a unix socket that --add-cloudsql-instances mounts.
 put_secret fairbid-database-url \
   "postgresql://fairbid:${DB_PASSWORD}@localhost/fairbid?host=/cloudsql/${SQL_CONNECTION}"

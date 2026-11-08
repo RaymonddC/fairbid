@@ -4,6 +4,7 @@
 // session and checks the role before doing anything (ARCHITECTURE.md).
 
 import { refresh } from "next/cache";
+import { keysBySellerFromEnv, runBots } from "@/lib/agents/bots";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
@@ -140,6 +141,23 @@ export async function classifyHsAction(product: string) {
     if (!hsGuessesPerUser.hit(user.id)) return { guess: HS_FIXTURE, source: "fixture" as const, gate: HS_CONFIDENCE_GATE };
     const r = await classifyHs(text);
     return { guess: r.value, source: r.source, gate: HS_CONFIDENCE_GATE };
+  });
+}
+
+/** Demo: the four seller agents work this tender over MCP, the same public endpoint any
+ * seller's own agent would use. They bid while it is open and answer questions after. */
+export async function inviteAgentsAction(tenderId: string) {
+  return run(async () => {
+    await owner(tenderId);
+    const keys = keysBySellerFromEnv(process.env.MCP_SELLER_KEYS);
+    if (keys.size === 0) throw new StepError("No seller agents are set up here: MCP_SELLER_KEYS is empty.");
+    // The agents call this same server on its loopback address. Never an address taken
+    // from the request: a forged Host header would receive the seller keys.
+    const steps = await runBots(`http://127.0.0.1:${process.env.PORT ?? 3000}/api/mcp`, keys, tenderId);
+    const failed = steps.filter((s) => s.action === "error");
+    if (failed.length === steps.length && failed.length > 0) throw new StepError(`The seller agents could not reach the tender: ${failed[0].detail}`);
+    if (!steps.some((s) => s.action === "bid" || s.action === "answer")) throw new StepError("The seller agents had nothing to do: each has already bid and answered.");
+    return { bids: steps.filter((s) => s.action === "bid").length, answers: steps.filter((s) => s.action === "answer").length };
   });
 }
 

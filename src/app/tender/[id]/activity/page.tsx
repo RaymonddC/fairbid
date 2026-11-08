@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { LiveRefresh } from "@/components/LiveRefresh";
 import { Panel, Pill } from "@/components/ui";
 import { verifyChain } from "@/lib/audit";
 import { getEvents } from "@/lib/audit-store";
@@ -37,7 +38,17 @@ function describe(
     case "clarification.replied":
       return { title: `Bid ${letterOf(p.bidId)} replied to a question` };
     case "tender.scored":
-      return { title: "Bids priced at delivered cost and scored" };
+      return {
+        title: "Bids priced at delivered cost and scored",
+        detail: p.judgedBy === "claude" ? "Judged criteria scored blind by the AI." : p.judgedBy === "fixture" ? "Judged criteria from scripted scores (no AI key)." : undefined,
+      };
+    case "review.completed": {
+      const q = (p.questions ?? {}) as { count?: number; source?: string };
+      return {
+        title: "AI review finished",
+        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "claude" ? "written by the AI" : "scripted"}. Code decides prices and flags; the AI only writes.`,
+      };
+    }
     case "award.started":
       return { title: `Bid ${letterOf(p.bidId)} chosen, PayPal order created`, detail: `Hold of ${money(p.holdCents)} waiting for approval.` };
     case "award.authorized":
@@ -71,7 +82,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <Panel className="grid content-start gap-4">
-        <h2 className="text-base">Everything that happened, in order</h2>
+        <LiveRefresh />
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-base">Everything that happened, in order</h2>
+          <Pill tone="ok" dot>
+            Updates live
+          </Pill>
+        </div>
         {events.length === 0 ? (
           <p className="text-sm text-muted">Nothing recorded yet.</p>
         ) : (
@@ -88,6 +105,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     </time>
                   </span>
                   {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
+                  {e.actor.startsWith("agent:") && <span className="text-xs text-dye">By a seller agent, over MCP</span>}
                   <span className="ref text-[11px] text-faint">
                     #{e.seq} {e.actor}, hash {e.hash.slice(0, 10)}…
                   </span>

@@ -31,6 +31,18 @@ Settings belong in repo variables, never set by hand on the service: every deplo
 
 To reset the hosted demo data, run the **Deploy to Cloud Run** workflow by hand with **seed** ticked. A normal deploy never seeds, because seeding rebuilds the demo tender.
 
+## Turn on the AI roles
+
+In Secret Manager, open `fairbid-anthropic-key`, select **New version**, paste an Anthropic API key and save. Then redeploy (re-run the latest **Deploy to Cloud Run**). `/api/ready` then says "Live model". A version holding a single space turns the AI off again, and the roles answer from their fixtures.
+
+## Seller agents
+
+The four demo agents sign in to `/api/mcp` with the keys in the `fairbid-mcp-seller-keys` secret. On an open tender, the buyer's **Invite seller agents** button runs them inside the service. To run them from a terminal instead:
+
+```bash
+MCP_SELLER_KEYS="$(gcloud secrets versions access latest --secret=fairbid-mcp-seller-keys)" npm run bots -- --url <service url>/api/mcp
+```
+
 ## Repo variables
 
 | Variable | What it does |

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aiEnabled } from "@/lib/ai/claude";
 import { aiModel } from "@/lib/ai-config";
 import { db } from "@/lib/db";
 import { createPayPalClient, loadConfig } from "@/lib/paypal/client";
@@ -47,7 +48,7 @@ export async function GET() {
       name: "llm",
       ok: true,
       critical: false,
-      detail: process.env.ANTHROPIC_API_KEY ? `Live model: ${aiModel()}.` : "Scripted fixtures: ANTHROPIC_API_KEY is not set.",
+      detail: aiEnabled() ? `Live model: ${aiModel()}.` : "Scripted fixtures: ANTHROPIC_API_KEY is not set.",
     },
     {
       name: "paypal_webhook",
