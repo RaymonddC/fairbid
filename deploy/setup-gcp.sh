@@ -59,17 +59,17 @@ gcloud iam service-accounts add-iam-policy-binding "$RUN_SA" \
   --member="serviceAccount:${DEPLOY_SA}" --role=roles/iam.serviceAccountUser --quiet >/dev/null
 
 echo "== GitHub sign-in, limited to ${GITHUB_REPO} =="
-gcloud iam workload-identity-pools describe github --location=global >/dev/null 2>&1 ||
-  gcloud iam workload-identity-pools create github --location=global --display-name="GitHub"
+gcloud iam workload-identity-pools describe fairbid-github --location=global >/dev/null 2>&1 ||
+  gcloud iam workload-identity-pools create fairbid-github --location=global --display-name="FairBid GitHub"
 gcloud iam workload-identity-pools providers describe fairbid \
-  --location=global --workload-identity-pool=github >/dev/null 2>&1 ||
+  --location=global --workload-identity-pool=fairbid-github >/dev/null 2>&1 ||
   gcloud iam workload-identity-pools providers create-oidc fairbid \
-    --location=global --workload-identity-pool=github \
+    --location=global --workload-identity-pool=fairbid-github \
     --issuer-uri="https://token.actions.githubusercontent.com" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
     --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
 
-POOL="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github"
+POOL="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/fairbid-github"
 gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
   --member="principalSet://iam.googleapis.com/${POOL}/attribute.repository/${GITHUB_REPO}" \
   --role=roles/iam.workloadIdentityUser --quiet >/dev/null

@@ -26,9 +26,9 @@ Devpost requires that judges can run the build themselves. A flow that needs tea
 
 One deployable, one language, and shared types in place of an API document. Hosting on Cloud Run gives up the Render sponsor prize, which is credits only, for a pipeline the team already knows.
 
-## Cloud SQL, in its own project
+## Cloud SQL, with every resource named fairbid-
 
-Everything stays inside Google Cloud, in a project of its own so a mistake here cannot reach another team's service. The database is the smallest shared-core Cloud SQL Postgres. It costs about US$10 a month even when idle, so delete it after judging. It accepts no direct connections: Cloud Run uses the Cloud SQL connector, and CI migrations go through the Cloud SQL proxy.
+Everything stays inside Google Cloud. Every resource is named `fairbid-…`, including the GitHub sign-in pool, so FairBid can share a billed project with another service without touching it. The database is the smallest shared-core Cloud SQL Postgres. It costs about US$10 a month even when idle, so delete it after judging. It accepts no direct connections: Cloud Run uses the Cloud SQL connector, and CI migrations go through the Cloud SQL proxy.
 
 ## "Good" means the buyer's published criteria
 

@@ -21,6 +21,37 @@ Working now:
 
 Not built yet: the AI roles (questions and the handmade score come from `src/lib/review-fixture.ts`), WhatsApp and Telegram, seller agents over MCP. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
 
+## Guardrails, and where they live in code
+
+| Guardrail | Enforcement |
+|---|---|
+| Sandbox money only | `loadConfig` refuses anything but `PAYPAL_ENV=sandbox` (`src/lib/paypal/client.ts`) |
+| FairBid never holds money | The seller is the PayPal payee from the moment the order is created (`startAward`, `src/lib/workflow.ts`) |
+| Nobody sees a bid before close | `isSealed` (`src/lib/tender.ts`); while sealed, `getTenderView` builds no bid views at all, only the count (`src/lib/tender-data.ts`) |
+| No late bids | `canSubmitBid` checks the state and the closing time on the server (`src/lib/tender.ts`) |
+| Bids compared on what the buyer really pays | Goods, shipping, duty, VAT and fees in integer cents (`src/lib/landed.ts`) |
+| Code ranks, the AI only explains | Scores and collusion pairs are computed in code (`src/lib/scoring.ts`); an LLM writes reasons and questions, so two runs cannot rank bids differently |
+| A collusion flag never removes a bid | `findCoordinatedPairs` only flags a pair for the buyer to look at (`src/lib/scoring.ts`) |
+| Questions cannot leak an early hint | `askQuestion` refuses while bidding is open, and after a winner is chosen (`src/lib/workflow.ts`) |
+| The hold covers the whole delivery | Delivery is capped at 28 days, inside PayPal's 29-day authorization (`publishTender`, `src/lib/workflow.ts`) |
+| Payments in order, never over the hold | `captureMilestone` pays the next step only, and refuses more than is left (`src/lib/workflow.ts`) |
+| Unused budget goes back to the buyer | The last capture sets `final_capture: true`, which closes the hold. No void or refund calls exist, because the sandbox refuses them with the seller as payee |
+| Every step on the record | A hash-chained event log; changing any past event breaks the chain (`src/lib/audit.ts`) |
+| Only the owner runs a tender | Identity comes from the session cookie, never from a form; `assertOwner` checks the buyer (`src/app/actions.ts`, `src/lib/workflow.ts`) |
+
+## Cost
+
+For the demo tender: a EUR 2,540 hold paid out in three milestones of 762, 1,016 and 700.
+
+| Item | Who pays | About |
+|---|---|---|
+| PayPal fee on what the seller receives | The seller, deducted by PayPal | EUR 110: 4.40% plus EUR 0.35 per capture, the rate for an Indonesian seller paid from abroad ([PayPal Indonesia fees](https://www.paypal.com/id/webapps/mpp/merchant-fees), read 8 Nov 2026). Converting the euros to rupiah adds 3.0% |
+| FairBid's fee | Nobody | EUR 0. Platform fees need PayPal Multiparty, which the sandbox does not offer with the seller as payee |
+| Claude, five AI roles | FairBid | Estimate, until the roles are built and measured: about US$0.30 per tender on Claude Opus 5.5 ($4 in, $20 out per million tokens), assuming about 6,000 tokens in and 1,500 out per role |
+| Hosting | FairBid | About US$10 a month for the Cloud SQL database, charged even when idle. Cloud Run scales to zero and stays inside the free tier at demo traffic |
+
+Duty, import VAT and the customs broker (EUR 340 on the demo tender) are the buyer's border costs, paid at the border, not through FairBid. They still count when bids are compared.
+
 ## Run it
 
 You need Node 24 and Docker.
