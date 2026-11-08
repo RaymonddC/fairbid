@@ -28,9 +28,11 @@ export default async function TenderLayout({ children, params }: { children: Rea
   const auth = t.award?.authorization;
   const daysLeft = t.award?.holdDaysLeft ?? null;
   const expiring =
-    auth?.paypalAuthId && auth.expiresAt && daysLeft !== null && daysLeft <= 5 && !t.award!.complete
-      ? { at: auth.expiresAt, days: Math.max(0, daysLeft), leftCents: t.award!.holdCents - t.award!.paidCents }
+    auth?.live && auth.expiresAt && daysLeft !== null && daysLeft <= 5 && !t.award!.complete
+      ? { at: auth.expiresAt, days: Math.max(0, daysLeft), leftCents: auth.amountCents - auth.usedCents }
       : null;
+  // A phase waiting for its hold, or a hold that lapsed with money still owed.
+  const needsHold = t.award && !t.award.complete && t.award.next.kind === "hold" ? t.award.next : null;
 
   return (
     <>
@@ -52,7 +54,7 @@ export default async function TenderLayout({ children, params }: { children: Rea
         }
         meta={
           <>
-            <StatusPill status={t.status} waiting={t.waitingReplies} />
+            <StatusPill status={t.status} waiting={t.waitingReplies} heldCents={t.award?.heldCents} />
             <Meta label="Budget">
               {eur(t.budgetCents)}
               {t.destinationCountry === "DE" ? " excl. VAT" : ""}
@@ -78,7 +80,20 @@ export default async function TenderLayout({ children, params }: { children: Rea
           <p role="alert" className="notice flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 !border-l-flag p-4 text-sm">
             <span>
               <strong className="font-medium">The PayPal hold ends {day(expiring.at)}</strong>, in {expiring.days} day{expiring.days === 1 ? "" : "s"}.{" "}
-              {eur(expiring.leftCents)} is still unpaid. After that date it can no longer be captured.
+              {eur(expiring.leftCents)} is still unpaid from it. After that date it can no longer be captured; you can place a new hold then.
+            </span>
+            <Link href={`/tender/${t.id}/award`} className="font-medium text-dye underline underline-offset-4">
+              Go to payments
+            </Link>
+          </p>
+        )}
+        {needsHold && (
+          <p role="status" className="notice flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 !border-l-warn p-4 text-sm">
+            <span>
+              <strong className="font-medium">
+                {needsHold.replacing ? `The hold for phase ${needsHold.phase} lapsed.` : `Phase ${needsHold.phase} is not held yet.`}
+              </strong>{" "}
+              Hold {eur(needsHold.amountCents)} with PayPal so the seller can be paid for it.
             </span>
             <Link href={`/tender/${t.id}/award`} className="font-medium text-dye underline underline-offset-4">
               Go to payments

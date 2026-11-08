@@ -208,18 +208,27 @@ model Award {
   id        String   @id @default(uuid())
   tenderId  String   @unique
   bidId     String
+  // The whole order: goods and shipping to the door. Over 28 days of delivery it is
+  // held one phase at a time (src/lib/phases.ts), so no single hold covers all of it.
   holdCents Int
   awardedAt DateTime @default(now())
+  // Set when the buyer ended the order between phases, with no hold in place.
+  endedAt   DateTime?
 
-  tender        Tender         @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  bid           Bid            @relation(fields: [bidId], references: [id])
-  authorization Authorization?
-  milestones    Milestone[]
+  tender         Tender          @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  bid            Bid             @relation(fields: [bidId], references: [id])
+  authorizations Authorization[]
+  milestones     Milestone[]
 }
 
+// One PayPal hold. An award has one per phase, plus one more for each hold that
+// lapsed before its phase was paid and was replaced. `seq` counts them in order.
 model Authorization {
   id            String    @id @default(uuid())
-  awardId       String    @unique
+  awardId       String
+  phase         Int       @default(1)
+  seq           Int       @default(1)
+  createdAt     DateTime  @default(now())
   paypalOrderId String    @unique
   paypalAuthId  String?   @unique
   amountCents   Int
@@ -228,6 +237,8 @@ model Authorization {
 
   award    Award     @relation(fields: [awardId], references: [id], onDelete: Cascade)
   captures Capture[]
+
+  @@unique([awardId, seq])
 }
 
 model Capture {
@@ -254,6 +265,9 @@ model Milestone {
   pct     Int
   seq     Int
   status  MilestoneStatus @default(pending)
+  // Days after the award when the step is expected, and the phase whose hold pays it.
+  dueDay  Int?
+  phase   Int             @default(1)
 
   award   Award    @relation(fields: [awardId], references: [id], onDelete: Cascade)
   capture Capture?

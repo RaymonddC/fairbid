@@ -2,6 +2,8 @@
 // AI tender writer share it: it is the writer's fallback when there is no API key or a
 // call fails. The buyer checks and edits every field before publishing.
 
+import { MAX_DELIVERY_DAYS } from "./phases";
+
 export type Draft = {
   title: string;
   item: string;
@@ -19,8 +21,8 @@ function amount(raw: string, suffix?: string) {
   return /k/i.test(suffix ?? "") ? n * 1000 : n;
 }
 
-/** The delivery window is capped at 28 days: a PayPal hold lasts 29. */
-export const MAX_WINDOW_DAYS = 28;
+/** The longest delivery window. Over 28 days the order is held one phase at a time. */
+export const MAX_WINDOW_DAYS = MAX_DELIVERY_DAYS;
 
 export function draftFrom(need: string): Draft {
   const qty = need.match(/\b(\d{1,6})\s+(?!euros?\b|eur\b|weeks?\b|days?\b)([a-z][a-z\s-]{2,60}?)(?=\s+for\b|\s+to\b|[.,]|$)/i);

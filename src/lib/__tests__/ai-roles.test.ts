@@ -25,7 +25,7 @@ describe("AI roles without a key", () => {
     assert.equal(r.source, "fixture");
     assert.equal(r.value.quantity, 300);
     assert.equal(r.value.budget, 3000);
-    assert.equal(r.value.deliveryDays, 28, "six weeks is capped inside the 29-day hold");
+    assert.equal(r.value.deliveryDays, 42, "six weeks is kept: a longer order is held in phases");
   });
 
   it("classifies with the demo code", async () => {
@@ -75,8 +75,9 @@ describe("reviewer guardrails", () => {
 
 describe("draft limits", () => {
   it("clamps whatever the model returns", () => {
-    const d = clampDraft({ title: "  ", item: "", quantity: -5, budget: 1e9, deliveryDays: 60, destination: "FR" as "DE", questions: [" a ", "", "b", "c", "d"] });
-    assert.deepEqual(d, { title: "New tender", item: "Items", quantity: 1, budget: 1_000_000, deliveryDays: 28, destination: "DE", questions: ["a", "b", "c"] });
+    const d = clampDraft({ title: "  ", item: "", quantity: -5, budget: 1e9, deliveryDays: 400, destination: "FR" as "DE", questions: [" a ", "", "b", "c", "d"] });
+    assert.deepEqual(d, { title: "New tender", item: "Items", quantity: 1, budget: 1_000_000, deliveryDays: 180, destination: "DE", questions: ["a", "b", "c"] });
+    assert.equal(clampDraft({ ...d, deliveryDays: 60 }).deliveryDays, 60, "two months is allowed");
   });
 
   it("reads dollars as a US delivery", () => {

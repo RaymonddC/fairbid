@@ -2,7 +2,7 @@ import type { TenderStatus } from "@/lib/tender";
 import { Pill } from "./ui";
 
 /** The tender's state in plain words for the buyer. */
-export function StatusPill({ status, waiting = 0 }: { status: TenderStatus; waiting?: number }) {
+export function StatusPill({ status, waiting = 0, heldCents }: { status: TenderStatus; waiting?: number; heldCents?: number }) {
   switch (status) {
     case "DRAFT":
       return <Pill>Draft</Pill>;
@@ -29,7 +29,12 @@ export function StatusPill({ status, waiting = 0 }: { status: TenderStatus; wait
       );
     case "AWARDED":
     case "IN_DELIVERY":
-      return (
+      // Between phases of a long order, nothing is held until the buyer approves the next hold.
+      return heldCents === 0 ? (
+        <Pill tone="warn" dot>
+          Next phase not held yet
+        </Pill>
+      ) : (
         <Pill tone="dye" dot>
           Money on hold with PayPal
         </Pill>

@@ -2,7 +2,7 @@
 // the tender's state, moves it with assertTransition, and records an event.
 // Identity always comes from the session, never from an argument.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "../generated/prisma/client";
 import { appendEvent } from "./audit-store";
 import { db } from "./db";
@@ -10,6 +10,7 @@ import { holdCents, landedCost } from "./landed";
 import { log } from "./log";
 import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError, type PayPalClient } from "./paypal/client";
 import { isFailedCapture, reasonText } from "./paypal/webhook";
+import { isLastOfPhase, isLive, MAX_DELIVERY_DAYS, nextStep, phaseCount, planMilestones, type HoldState, type MilestoneState } from "./phases";
 import { explainPair, reviewProposals, scoreBlind } from "./ai/roles";
 import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED, type FixtureQuestion } from "./review-fixture";
 import {
@@ -21,7 +22,7 @@ import {
   formatEur,
   leadTimeScore,
 } from "./scoring";
-import { DEFAULT_MILESTONES, assertTransition, canSubmitBid, milestoneAmounts, type TenderStatus } from "./tender";
+import { assertTransition, canSubmitBid, milestoneAmounts, type TenderStatus } from "./tender";
 import { tariffFor } from "./tender-data";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DESTINATIONS } from "./format";
@@ -38,6 +39,12 @@ export class StepError extends Error {}
 
 let paypal: PayPalClient | null = null;
 const pp = () => (paypal ??= createPayPalClient(loadConfig()));
+
+/** Swaps in a stand-in PayPal client, for scripts that run the money steps against a
+ * local database without the sandbox. The app never calls it. */
+export function setPayPalClient(client: PayPalClient | null): void {
+  paypal = client;
+}
 
 type Tx = Prisma.TransactionClient;
 
@@ -313,13 +320,82 @@ export async function scoreTender(tenderId: string, actor: string) {
 }
 
 // ── Award, hold and pay ──────────────────────────────────────────────────────
+//
+// An order is paid in phases (src/lib/phases.ts). Each phase has its own PayPal hold,
+// approved by the buyer when the phase starts; an order of 28 days or less is one
+// phase. The seller is the payee of every hold, so FairBid never holds money.
 
-/** Records the buyer's choice and creates the PayPal order (intent AUTHORIZE,
- * seller as payee). Returns the order id for the PayPal button to approve. */
+/** How long an unapproved order is reused before a new one is made. */
+const ORDER_REUSE_MS = 60 * 60_000;
+
+/** Everything about an award that the money steps read. */
+async function loadAward(tenderId: string) {
+  return db.award.findUnique({
+    where: { tenderId },
+    include: {
+      authorizations: { include: { captures: true }, orderBy: { seq: "asc" } },
+      milestones: { include: { capture: true }, orderBy: { seq: "asc" } },
+      tender: true,
+      bid: { include: { seller: true } },
+    },
+  });
+}
+type FullAward = NonNullable<Awaited<ReturnType<typeof loadAward>>>;
+
+/** A capture PayPal accepted. A declined or denied one paid nothing. */
+const accepted = <C extends { status: string }>(c: C | null | undefined): C | null => (c && !isFailedCapture(c.status) ? c : null);
+
+/** The award in the shape the pure phase rules read. */
+export function phaseState(award: Pick<FullAward, "holdCents" | "milestones" | "authorizations">) {
+  const planned = milestoneAmounts(award.holdCents, award.milestones.map((m) => ({ name: m.name, pct: m.pct })));
+  const milestones: MilestoneState[] = award.milestones.map((m, i) => ({ phase: m.phase, plannedCents: planned[i], paid: !!accepted(m.capture) }));
+  const holds: HoldState[] = award.authorizations.map((a) => ({ phase: a.phase, paypalAuthId: a.paypalAuthId, status: a.status, expiresAt: a.expiresAt }));
+  return { planned, milestones, holds };
+}
+
+/** The hold that pays a phase now: the newest live one. */
+function liveHold(award: FullAward, phase: number) {
+  return [...award.authorizations].reverse().find((a) => a.phase === phase && isLive(a));
+}
+
+/** The PayPal order for one hold. The first hold of a one-phase order itemizes goods and
+ * shipping as before; any other hold is one line naming its phase. */
+async function createHoldOrder(input: {
+  award: { id: string; holdCents: number };
+  tender: { id: string; title: string; currency: string; spec: unknown };
+  payeeEmail: string;
+  phase: number;
+  phases: number;
+  amountCents: number;
+  breakdown?: { goodsCents: number; shippingCents: number };
+  requestId: string;
+}) {
+  const spec = (input.tender.spec ?? {}) as { item?: string; quantity?: number };
+  const what = `${spec.quantity ?? ""} ${spec.item ?? input.tender.title}`.trim();
+  const items = input.breakdown
+    ? [{ name: what.slice(0, 127), quantity: 1, unitAmountCents: input.breakdown.goodsCents }]
+    : [{ name: `Phase ${input.phase} of ${input.phases}: ${what}`.slice(0, 127), quantity: 1, unitAmountCents: input.amountCents }];
+  return pp().createAuthorizeOrder(
+    {
+      referenceId: input.tender.id,
+      description: `${input.tender.title}, FairBid tender${input.phases > 1 ? `, phase ${input.phase} of ${input.phases}` : ""}`.slice(0, 127),
+      currency: input.tender.currency,
+      payeeEmail: input.payeeEmail,
+      items,
+      shippingCents: input.breakdown?.shippingCents ?? 0,
+      taxCents: 0,
+      handlingCents: 0,
+    },
+    input.requestId,
+  );
+}
+
+/** Records the buyer's choice and creates the PayPal order for the first hold (intent
+ * AUTHORIZE, seller as payee). Returns the order id for the PayPal button to approve. */
 export async function startAward(tenderId: string, bidId: string, actor: string): Promise<{ orderId: string }> {
   if ((await statusOf(tenderId)) !== "SCORED") throw new StepError("Score the bids before awarding.");
-  const t = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { award: { include: { authorization: true } } } });
-  if (t.award?.authorization?.paypalAuthId) throw new StepError("This tender is already awarded.");
+  const t = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { award: { include: { authorizations: true } } } });
+  if (t.award?.authorizations.some((a) => a.paypalAuthId)) throw new StepError("This tender is already awarded.");
 
   const bid = await db.bid.findUnique({ where: { id: bidId }, include: { lines: true, seller: true } });
   if (!bid || bid.tenderId !== tenderId) throw new StepError("That bid is not part of this tender.");
@@ -327,13 +403,17 @@ export async function startAward(tenderId: string, bidId: string, actor: string)
     { goodsCents: lineOf(bid.lines, "goods"), shippingCents: lineOf(bid.lines, "shipping"), feesCents: lineOf(bid.lines, "fees") },
     await tariffFor(bid.hsCode, t.destinationCountry),
   );
-  const hold = holdCents(landed);
-  const spec = (t.spec ?? {}) as { item?: string; quantity?: number };
+  const total = holdCents(landed);
+  const windowDays = Number((t.spec as { deliveryDays?: number })?.deliveryDays ?? 28);
+  const plan = planMilestones(Math.min(MAX_DELIVERY_DAYS, Math.max(1, Math.round(windowDays))));
+  const phases = phaseCount(plan);
+  const planned = milestoneAmounts(total, plan);
+  const firstHold = plan.reduce((s, m, i) => s + (m.phase === 1 ? planned[i] : 0), 0);
 
   // The PayPal button can ask for an order twice (a double click, a re-render). A recent
   // order for the same bid is reused, so the one the buyer approves is the one on record.
-  const pending = t.award?.authorization;
-  if (t.award && pending && t.award.bidId === bidId && Date.now() - t.award.awardedAt.getTime() < ORDER_REUSE_MS) {
+  const pending = t.award?.authorizations.find((a) => a.seq === 1);
+  if (t.award && pending && t.award.bidId === bidId && Date.now() - pending.createdAt.getTime() < ORDER_REUSE_MS) {
     return { orderId: pending.paypalOrderId };
   }
   // An older attempt, or one for another bid, was never approved: it is replaced. Nothing was held.
@@ -342,44 +422,96 @@ export async function startAward(tenderId: string, bidId: string, actor: string)
     data: {
       tenderId,
       bidId,
-      holdCents: hold,
-      milestones: { create: DEFAULT_MILESTONES.map((m, i) => ({ name: m.name, pct: m.pct, seq: i + 1 })) },
+      holdCents: total,
+      milestones: { create: plan.map((m, i) => ({ name: m.name, pct: m.pct, seq: i + 1, dueDay: m.dueDay, phase: m.phase })) },
     },
   });
 
   let order: { id: string; status: string };
   try {
-    order = await pp().createAuthorizeOrder(
-      {
-        referenceId: tenderId,
-        description: `${t.title}, FairBid tender`.slice(0, 127),
-        currency: t.currency,
-        payeeEmail: bid.seller.paypalEmail,
-        items: [{ name: `${spec.quantity ?? ""} ${spec.item ?? t.title}`.trim().slice(0, 127), quantity: 1, unitAmountCents: landed.goodsCents }],
-        shippingCents: landed.shippingCents,
-        taxCents: 0,
-        handlingCents: 0,
-      },
-      `award-${award.id}`,
-    );
+    order = await createHoldOrder({
+      award,
+      tender: t,
+      payeeEmail: bid.seller.paypalEmail,
+      phase: 1,
+      phases,
+      amountCents: firstHold,
+      breakdown: phases === 1 ? { goodsCents: landed.goodsCents, shippingCents: landed.shippingCents } : undefined,
+      requestId: `award-${award.id}`,
+    });
   } catch (e) {
     await db.award.delete({ where: { id: award.id } });
     throw e;
   }
-  await db.authorization.create({ data: { awardId: award.id, paypalOrderId: order.id, amountCents: hold, status: order.status } });
-  await appendEvent(tenderId, actor, "award.started", { bidId, holdCents: hold, paypalOrderId: order.id });
+  await db.authorization.create({ data: { awardId: award.id, phase: 1, seq: 1, paypalOrderId: order.id, amountCents: firstHold, status: order.status } });
+  await appendEvent(tenderId, actor, "award.started", { bidId, holdCents: total, phases, firstHoldCents: firstHold, paypalOrderId: order.id });
   return { orderId: order.id };
 }
 
-/** How long an unapproved order is reused before a new one is made. */
-const ORDER_REUSE_MS = 60 * 60_000;
+/** Creates the PayPal order for the next hold: the next phase's, or a new one for a phase
+ * whose hold lapsed before it was paid. Returns the order id for the PayPal button. */
+export async function startHold(tenderId: string, actor: string): Promise<{ orderId: string }> {
+  const status = await statusOf(tenderId);
+  if (status !== "AWARDED" && status !== "IN_DELIVERY") throw new StepError("This tender has no order to hold money for.");
+  const award = await loadAward(tenderId);
+  if (!award) throw new StepError("This tender has no order to hold money for.");
+  if (award.endedAt) throw new StepError("This order was ended. Nothing more is held or paid.");
 
-/** The buyer approved on PayPal: authorize the order, so the money is held. Safe to
- * repeat: a second call, or one after a lost answer, records the same hold once. */
+  const { milestones, holds } = phaseState(award);
+  const step = nextStep(milestones, holds);
+  if (step.kind === "done") throw new StepError("Every step is paid. Nothing more to hold.");
+  if (step.kind === "pay") throw new StepError("This phase is already held. Pay its next step instead.");
+
+  // A recent unapproved order for the same phase and amount is reused; an older one is
+  // dropped (nothing was held by it) and replaced.
+  const unapproved = award.authorizations.filter((a) => !a.paypalAuthId && a.phase === step.phase);
+  const reuse = unapproved.find((a) => a.amountCents === step.amountCents && Date.now() - a.createdAt.getTime() < ORDER_REUSE_MS);
+  if (reuse) return { orderId: reuse.paypalOrderId };
+  if (unapproved.length) await db.authorization.deleteMany({ where: { id: { in: unapproved.map((a) => a.id) } } });
+
+  const seq = Math.max(0, ...award.authorizations.filter((a) => !unapproved.includes(a)).map((a) => a.seq)) + 1;
+  const id = randomUUID();
+  const order = await createHoldOrder({
+    award,
+    tender: award.tender,
+    payeeEmail: award.bid.seller.paypalEmail,
+    phase: step.phase,
+    phases: phaseCount(award.milestones),
+    amountCents: step.amountCents,
+    requestId: `hold-${id}`,
+  });
+  await db.authorization.create({
+    data: { id, awardId: award.id, phase: step.phase, seq, paypalOrderId: order.id, amountCents: step.amountCents, status: order.status },
+  });
+  await appendEvent(tenderId, actor, "hold.started", {
+    phase: step.phase,
+    phases: phaseCount(award.milestones),
+    amountCents: step.amountCents,
+    replacing: step.replacing,
+    paypalOrderId: order.id,
+  });
+  return { orderId: order.id };
+}
+
+/** The buyer approved on PayPal: authorize the order, so the money is held. Used for
+ * every hold, the first and each later one. Safe to repeat: a second call, or one
+ * after a lost answer, records the same hold once. */
 export async function authorizeAward(tenderId: string, orderId: string, actor: string) {
   const auth = await db.authorization.findUnique({ where: { paypalOrderId: orderId }, include: { award: true } });
   if (!auth || auth.award.tenderId !== tenderId) throw new StepError("That PayPal order is not part of this tender.");
   if (auth.paypalAuthId) return;
+  if (auth.award.endedAt) throw new StepError("This order was ended. Nothing more is held.");
+
+  // A later hold is only taken while its phase still needs one, so a stale PayPal window
+  // can never hold money twice for the same phase.
+  if (auth.seq > 1) {
+    const award = (await loadAward(tenderId))!;
+    const { milestones, holds } = phaseState(award);
+    const step = nextStep(milestones, holds);
+    if (step.kind !== "hold" || step.phase !== auth.phase) {
+      throw new StepError("This phase no longer needs a hold. Nothing was held; reload the page.");
+    }
+  }
 
   type Hold = { id: string; status: string; expiration_time?: string };
   let a: Hold | undefined;
@@ -390,7 +522,14 @@ export async function authorizeAward(tenderId: string, orderId: string, actor: s
     // An earlier attempt may have reached PayPal and lost its answer: the hold then
     // already exists on the order, and is read back instead of failing.
     const maybeDone = error instanceof PayPalUnreachableError || (error instanceof PayPalError && error.issue === "ORDER_ALREADY_AUTHORIZED");
-    if (!maybeDone) throw error;
+    if (!maybeDone) {
+      // Usually the buyer's money or card: nothing is reserved, the phase stays unheld,
+      // and the seller's page keeps saying not to start it.
+      if (error instanceof PayPalError) {
+        await appendEvent(tenderId, actor, "hold.declined", { phase: auth.phase, amountCents: auth.amountCents, issue: error.issue ?? String(error.status) });
+      }
+      throw error;
+    }
     const order = await pp().getOrder(orderId);
     a = order.purchase_units?.[0]?.payments?.authorizations?.[0];
     if (!a) throw error;
@@ -398,10 +537,12 @@ export async function authorizeAward(tenderId: string, orderId: string, actor: s
   }
   if (!a) throw new StepError("PayPal did not return a hold. Nothing was charged.");
   if (a.status === "DENIED" || a.status === "VOIDED") {
+    await appendEvent(tenderId, actor, "hold.declined", { phase: auth.phase, amountCents: auth.amountCents, issue: a.status });
     throw new StepError("PayPal declined the hold, so nothing is reserved. Try another payment method in the PayPal window.");
   }
 
   const hold = a;
+  const first = auth.seq === 1;
   const recorded = await db.$transaction(async (tx) => {
     // Only the first of two concurrent calls records the hold and moves the tender.
     const { count } = await tx.authorization.updateMany({
@@ -409,12 +550,13 @@ export async function authorizeAward(tenderId: string, orderId: string, actor: s
       data: { paypalAuthId: hold.id, status: hold.status, expiresAt: hold.expiration_time ? new Date(hold.expiration_time) : null },
     });
     if (count === 0) return false;
-    await move(tx, tenderId, "SCORED", "AWARDED");
+    if (first) await move(tx, tenderId, "SCORED", "AWARDED");
     return true;
   });
-  if (recorded) {
-    await appendEvent(tenderId, actor, "award.authorized", { paypalAuthId: hold.id, amountCents: auth.amountCents, expiresAt: hold.expiration_time });
-  }
+  if (!recorded) return;
+  const phases = (await db.milestone.aggregate({ where: { awardId: auth.awardId }, _max: { phase: true } }))._max.phase ?? 1;
+  const payload = { paypalAuthId: hold.id, amountCents: auth.amountCents, expiresAt: hold.expiration_time, phase: auth.phase, phases };
+  await appendEvent(tenderId, actor, first ? "award.authorized" : "hold.authorized", payload);
 }
 
 /** PayPal issues that mean the hold itself is gone, not just this attempt. */
@@ -424,48 +566,58 @@ const DEAD_HOLD: Record<string, string> = {
   AUTHORIZATION_ALREADY_CAPTURED: "CAPTURED",
 };
 
-/** Pays the next milestone from the hold. The last one is a final capture, which
- * releases whatever is left back to the buyer; it may be less than planned. */
+/** Pays the next milestone from its phase's hold. The last step of a phase is a final
+ * capture, which closes that hold; the last step of the order may pay less than planned,
+ * and the rest is released back to the buyer. */
 export async function captureMilestone(
   tenderId: string,
   milestoneId: string,
   amountCents: number,
   actor: string,
-): Promise<{ captureId: string; releasedCents: number; final: boolean }> {
+): Promise<{ captureId: string; releasedCents: number; final: boolean; phaseDone: boolean }> {
   const status = await statusOf(tenderId);
   if (status !== "AWARDED" && status !== "IN_DELIVERY") throw new StepError("Nothing to pay on this tender.");
-  const award = await db.award.findUniqueOrThrow({
-    where: { tenderId },
-    include: { authorization: true, milestones: { include: { capture: true }, orderBy: { seq: "asc" } }, tender: true },
-  });
-  const auth = award.authorization;
-  if (!auth?.paypalAuthId) throw new StepError("The hold is not in place yet.");
-  if (auth.status === "VOIDED" || auth.status === "EXPIRED") {
-    throw new StepError(auth.status === "EXPIRED" ? PAYPAL_MESSAGES.AUTHORIZATION_EXPIRED : PAYPAL_MESSAGES.AUTHORIZATION_VOIDED);
-  }
-
-  // A capture PayPal declined or denied paid nothing, so that step is still open.
-  const paidCapture = (m: (typeof award.milestones)[number]) => (m.capture && !isFailedCapture(m.capture.status) ? m.capture : null);
+  const award = await loadAward(tenderId);
+  if (!award) throw new StepError("Nothing to pay on this tender.");
+  if (award.endedAt) throw new StepError("This order was ended. Nothing more is paid.");
+  const { planned, milestones, holds } = phaseState(award);
+  const lastIndex = award.milestones.length - 1;
 
   // A second click on a step that is already paid gets the same answer, not an error.
-  const asked = award.milestones.find((m) => m.id === milestoneId);
-  const askedCapture = asked ? paidCapture(asked) : null;
-  if (asked && askedCapture) {
-    const last = asked === award.milestones[award.milestones.length - 1];
-    const paidSoFar = award.milestones.reduce((s, m) => s + (paidCapture(m)?.amountCents ?? 0), 0);
-    return { captureId: askedCapture.paypalCaptureId ?? "", releasedCents: last ? award.holdCents - paidSoFar : 0, final: last };
+  const askedIndex = award.milestones.findIndex((m) => m.id === milestoneId);
+  const askedCapture = askedIndex >= 0 ? accepted(award.milestones[askedIndex].capture) : null;
+  if (askedCapture) {
+    const hold = award.authorizations.find((a) => a.id === askedCapture.authorizationId);
+    const lastOfPhase = isLastOfPhase(milestones, askedIndex);
+    const usedOfHold = hold ? hold.captures.reduce((s, c) => s + (accepted(c)?.amountCents ?? 0), 0) : 0;
+    return {
+      captureId: askedCapture.paypalCaptureId ?? "",
+      releasedCents: lastOfPhase && hold ? hold.amountCents - usedOfHold : 0,
+      final: askedIndex === lastIndex,
+      phaseDone: lastOfPhase && askedIndex !== lastIndex,
+    };
   }
-  const next = award.milestones.find((m) => !paidCapture(m));
-  if (!next || next.id !== milestoneId) throw new StepError("Pay the steps in order.");
-  const planned = milestoneAmounts(award.holdCents, award.milestones.map((m) => ({ name: m.name, pct: m.pct })));
-  const index = award.milestones.indexOf(next);
-  const final = index === award.milestones.length - 1;
-  const paid = award.milestones.reduce((s, m) => s + (paidCapture(m)?.amountCents ?? 0), 0);
-  const remaining = award.holdCents - paid;
+
+  const step = nextStep(milestones, holds);
+  if (step.kind === "done") throw new StepError("Every step is paid.");
+  if (award.milestones[step.index].id !== milestoneId) throw new StepError("Pay the steps in order.");
+  if (step.kind === "hold") {
+    throw new StepError(
+      step.replacing
+        ? "The PayPal hold for this phase has lapsed. Place a new hold for it first."
+        : `Place the PayPal hold for phase ${step.phase} first.`,
+    );
+  }
+  const index = step.index;
+  const next = award.milestones[index];
+  const hold = liveHold(award, step.phase)!;
+  const lastOfPhase = isLastOfPhase(milestones, index);
+  const final = index === lastIndex;
+  const holdLeft = hold.amountCents - hold.captures.reduce((s, c) => s + (accepted(c)?.amountCents ?? 0), 0);
 
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new StepError("Enter an amount above €0.");
-  if (final ? amountCents > remaining : amountCents !== planned[index]) {
-    throw new StepError(final ? `The most left to pay is ${formatEur(remaining, award.tender.currency)}.` : "This step pays the planned amount.");
+  if (final ? amountCents > holdLeft : amountCents !== planned[index]) {
+    throw new StepError(final ? `The most left to pay is ${formatEur(holdLeft, award.tender.currency)}.` : "This step pays the planned amount.");
   }
 
   // The request id is the milestone: a retry, a double click or a lost answer all get
@@ -477,24 +629,24 @@ export async function captureMilestone(
   let cap: { id: string; status: string; status_details?: { reason?: string } };
   try {
     cap = await pp().captureAuthorization({
-      authorizationId: auth.paypalAuthId,
+      authorizationId: hold.paypalAuthId!,
       currency: award.tender.currency,
       amountCents,
-      finalCapture: final,
+      finalCapture: lastOfPhase,
       requestId,
     });
   } catch (error) {
     const dead = error instanceof PayPalError ? DEAD_HOLD[error.issue ?? ""] : undefined;
-    if (dead) await db.authorization.update({ where: { id: auth.id }, data: { status: dead } });
+    if (dead) await db.authorization.update({ where: { id: hold.id }, data: { status: dead } });
     throw error;
   }
 
   const row = {
-    authorizationId: auth.id,
+    authorizationId: hold.id,
     milestoneId: next.id,
     paypalCaptureId: cap.id,
     amountCents,
-    finalCapture: final,
+    finalCapture: lastOfPhase,
     status: cap.status,
     statusReason: cap.status_details?.reason ?? null,
     refundedCents: 0,
@@ -508,32 +660,59 @@ export async function captureMilestone(
     );
   }
 
+  const releasedCents = lastOfPhase ? holdLeft - amountCents : 0;
   try {
     await db.$transaction(async (tx) => {
       // A refused capture from an earlier try is replaced by this one.
       await tx.capture.upsert({ where: { milestoneId: next.id }, create: row, update: row });
       await tx.milestone.update({ where: { id: next.id }, data: { status: "captured" } });
       if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
-      if (final) {
-        await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
-        await tx.authorization.update({ where: { id: auth.id }, data: { status: "CAPTURED" } });
-      }
+      if (lastOfPhase) await tx.authorization.update({ where: { id: hold.id }, data: { status: "CAPTURED" } });
+      if (final) await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
     });
   } catch (error) {
     // A concurrent click already recorded this same capture: the step is paid, once.
-    if (isUniqueViolation(error)) return { captureId: cap.id, releasedCents: final ? remaining - amountCents : 0, final };
+    if (isUniqueViolation(error)) return { captureId: cap.id, releasedCents, final, phaseDone: lastOfPhase && !final };
     throw error;
   }
   await appendEvent(tenderId, actor, "milestone.paid", {
     milestone: next.name,
     amountCents,
-    finalCapture: final,
+    phase: step.phase,
+    finalCapture: lastOfPhase,
+    completesOrder: final,
     paypalCaptureId: cap.id,
     status: cap.status,
     reason: cap.status_details?.reason,
-    releasedCents: final ? remaining - amountCents : 0,
+    releasedCents,
   });
-  return { captureId: cap.id, releasedCents: final ? remaining - amountCents : 0, final };
+  return { captureId: cap.id, releasedCents, final, phaseDone: lastOfPhase && !final };
+}
+
+/** The buyer stops the order between phases, when no hold is in place: nothing more is
+ * held or paid, and what was never held is never charged. A live hold cannot be ended
+ * this way, because PayPal does not let FairBid void a hold that pays the seller. */
+export async function endOrder(tenderId: string, actor: string): Promise<{ neverChargedCents: number }> {
+  const status = await statusOf(tenderId);
+  if (status !== "AWARDED" && status !== "IN_DELIVERY") throw new StepError("This order cannot be ended now.");
+  const award = await loadAward(tenderId);
+  if (!award || award.endedAt) throw new StepError("This order cannot be ended now.");
+  const { milestones, holds } = phaseState(award);
+  const step = nextStep(milestones, holds);
+  if (step.kind === "done") throw new StepError("Every step is already paid.");
+  if (step.kind === "pay") {
+    throw new StepError("A PayPal hold is in place for this phase. Pay its steps, or let it lapse; then the order can be ended.");
+  }
+  const paid = award.milestones.reduce((s, m) => s + (accepted(m.capture)?.amountCents ?? 0), 0);
+  const neverChargedCents = award.holdCents - paid;
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.award.updateMany({ where: { id: award.id, endedAt: null }, data: { endedAt: new Date() } });
+    if (count !== 1) throw new StepError("This tender changed in the meantime. Reload the page.");
+    if (status === "AWARDED") await move(tx, tenderId, "AWARDED", "IN_DELIVERY");
+    await move(tx, tenderId, "IN_DELIVERY", "COMPLETE");
+  });
+  await appendEvent(tenderId, actor, "order.ended", { afterPhase: step.phase - 1, paidCents: paid, neverChargedCents });
+  return { neverChargedCents };
 }
 
 // ── Sellers and buyers ───────────────────────────────────────────────────────
@@ -620,8 +799,8 @@ export interface TenderInput {
 export async function publishTender(input: TenderInput, actor: string): Promise<string> {
   const total = input.criteria.reduce((s, c) => s + c.weightPct, 0);
   if (total !== 100) throw new StepError("Weights must add up to 100%.");
-  if (input.deliveryDays < 1 || input.deliveryDays > 28) {
-    throw new StepError("Delivery must fit inside PayPal's 29-day hold: 28 days at most.");
+  if (!Number.isInteger(input.deliveryDays) || input.deliveryDays < 1 || input.deliveryDays > MAX_DELIVERY_DAYS) {
+    throw new StepError(`Delivery must be 1 to ${MAX_DELIVERY_DAYS} days. Over 28 days, PayPal holds the money one phase at a time.`);
   }
   if (!input.title.trim() || input.needText.trim().length < 20) throw new StepError("Describe what you need in a sentence or more.");
   // Money is integer cents in a 32-bit column, and the sandbox is not for fortunes.
@@ -668,6 +847,7 @@ const PAYPAL_MESSAGES: Record<string, string> = {
   PERMISSION_DENIED: "PayPal refused: this needs PayPal Multiparty.",
   ORDER_NOT_APPROVED: "The order was not approved on PayPal yet.",
   INSTRUMENT_DECLINED: "PayPal declined the buyer's payment method. Try another one in the PayPal window.",
+  TRANSACTION_REFUSED: "PayPal refused the hold, so nothing is reserved. Try another payment method in the PayPal window.",
   PAYER_ACTION_REQUIRED: "PayPal needs the buyer to finish a step in the PayPal window first.",
   MAX_CAPTURE_AMOUNT_EXCEEDED: "That is more than the hold has left.",
 };

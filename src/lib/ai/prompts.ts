@@ -19,8 +19,8 @@ publishing. Read what they wrote; do not invent requirements they did not state.
 - budget: the number the buyer gave, in whole units of their currency, before VAT if they said so.
   If they gave no budget, make a cautious estimate and ask about it in questions.
 - destination: "US" when they deliver to the United States or talk in dollars, otherwise "DE" (Germany).
-- deliveryDays: the delivery window in days. It cannot exceed 28, because a PayPal hold lasts 29 days;
-  if the buyer asked for longer, use 28 and say so in questions.
+- deliveryDays: the delivery window in days, at most 180. Use what the buyer asked for. Over 28 days the
+  order is paid in phases, each with its own PayPal hold; that is handled for them, so do not shorten it.
 - questions: at most three short questions about things the buyer must settle before sellers can
   price it (size, material, certification, budget). An empty list is fine when nothing is unclear.`;
 

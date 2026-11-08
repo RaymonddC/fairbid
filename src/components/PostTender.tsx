@@ -8,6 +8,7 @@ import { DESTINATIONS, money } from "@/lib/format";
 import { notifyError, notifySuccess } from "./ActionButton";
 import { PhotoPicker, PhotoStrip } from "./Photos";
 import { Button, Panel, Pill } from "./ui";
+import { MAX_DELIVERY_DAYS, phaseCount, planMilestones } from "@/lib/phases";
 
 type Phase = "write" | "drafting" | "review";
 
@@ -22,12 +23,19 @@ const CRITERIA = [
   { name: "Completeness", weightPct: 15, rubric: "All fields filled and customs code confirmed." },
 ];
 
+/** How the money will be held for this window: one hold, or one per phase. */
+function holdsHint(days: number): string {
+  if (!Number.isInteger(days) || days < 1 || days > MAX_DELIVERY_DAYS) return `1 to ${MAX_DELIVERY_DAYS} days`;
+  const phases = phaseCount(planMilestones(days));
+  return phases === 1 ? "One PayPal hold covers it" : `Over 28 days: paid in ${phases} PayPal holds, one per phase`;
+}
+
 /** What is wrong with the draft, in the buyer's words, or null. */
 function problem(d: Draft): string | null {
   if (!d.title.trim()) return "Give the tender a title.";
   if (!Number.isInteger(d.quantity) || d.quantity < 1 || d.quantity > 100_000) return "Quantity must be between 1 and 100,000.";
   if (!Number.isFinite(d.budget) || d.budget < 50 || d.budget > 1_000_000) return "Budget must be between 50 and 1,000,000.";
-  if (!Number.isInteger(d.deliveryDays) || d.deliveryDays < 1 || d.deliveryDays > 28) return "Delivery must be 1 to 28 days, inside the 29-day PayPal hold.";
+  if (!Number.isInteger(d.deliveryDays) || d.deliveryDays < 1 || d.deliveryDays > MAX_DELIVERY_DAYS) return `Delivery must be 1 to ${MAX_DELIVERY_DAYS} days.`;
   return null;
 }
 
@@ -181,8 +189,8 @@ export function PostTender() {
               <DraftField label={dest.country === "DE" ? `Budget, excl. VAT (${dest.currency})` : `Budget (${dest.currency})`} hint={Number.isFinite(d.budget) ? money(d.budget * 100, dest.currency) : ""}>
                 <input type="number" min={50} step={50} inputMode="numeric" value={d.budget} onChange={(e) => edit({ budget: Number(e.target.value) })} className={`num ${input}`} />
               </DraftField>
-              <DraftField label="Delivery window (days)" hint="28 at most: a PayPal hold lasts 29 days">
-                <input type="number" min={1} max={28} step={1} inputMode="numeric" value={d.deliveryDays} onChange={(e) => edit({ deliveryDays: Math.round(Number(e.target.value)) })} className={`num ${input}`} />
+              <DraftField label="Delivery window (days)" hint={holdsHint(d.deliveryDays)}>
+                <input type="number" min={1} max={MAX_DELIVERY_DAYS} step={1} inputMode="numeric" value={d.deliveryDays} onChange={(e) => edit({ deliveryDays: Math.round(Number(e.target.value)) })} className={`num ${input}`} />
               </DraftField>
             </div>
             {issue && (

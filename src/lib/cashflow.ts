@@ -2,6 +2,9 @@
 // payment's time is recorded, and it is tamper-evident (audit.ts).
 
 import { db } from "./db";
+import { isFailedCapture } from "./paypal/webhook";
+import { isLive, nextStep } from "./phases";
+import { milestoneAmounts } from "./tender";
 import { listTenders } from "./tender-data";
 import type { TenderSummary } from "./views";
 
@@ -37,6 +40,8 @@ export interface UpcomingPayment {
   currency: string;
   holdExpiresAt: string | null;
   daysLeft: number | null;
+  /** Set when the step cannot be paid until the buyer approves a hold for its phase. */
+  needsHold: { phase: number; amountCents: number; replacing: boolean } | null;
   sellerName: string;
 }
 
@@ -46,13 +51,15 @@ interface Paid {
   paypalCaptureId?: string;
   releasedCents?: number;
   paypalAuthId?: string;
+  phase?: number;
+  unusedCents?: number;
 }
 
 async function transactions(filter: { sellerId?: string; buyerId?: string }): Promise<Transaction[]> {
   const { sellerId, buyerId } = filter;
   const events = await db.event.findMany({
     where: {
-      kind: { in: ["award.authorized", "milestone.paid"] },
+      kind: { in: ["award.authorized", "hold.authorized", "milestone.paid", "paypal.hold.released"] },
       ...(sellerId ? { tender: { award: { bid: { sellerId } } } } : {}),
       ...(buyerId ? { tender: { buyerId } } : {}),
     },
@@ -69,8 +76,12 @@ async function transactions(filter: { sellerId?: string; buyerId?: string }): Pr
       currency: e.tender.currency,
       sellerName: e.tender.award?.bid.seller.name ?? null,
     };
-    if (e.kind === "award.authorized") {
-      out.push({ ...base, kind: "hold", label: "Hold placed", amountCents: p.amountCents ?? 0, ref: p.paypalAuthId ?? null });
+    if (e.kind === "award.authorized" || e.kind === "hold.authorized") {
+      const label = p.phase && p.phase > 1 ? `Hold placed, phase ${p.phase}` : "Hold placed";
+      out.push({ ...base, kind: "hold", label, amountCents: p.amountCents ?? 0, ref: p.paypalAuthId ?? null });
+    } else if (e.kind === "paypal.hold.released") {
+      // A hold that lapsed with money unused: it went back to the buyer without a capture.
+      if (p.unusedCents) out.push({ ...base, kind: "release", label: "Hold lapsed, back to the buyer", amountCents: p.unusedCents, ref: p.paypalAuthId ?? null });
     } else {
       out.push({ ...base, kind: "payment", label: p.milestone ?? "Payment", amountCents: p.amountCents ?? 0, ref: p.paypalCaptureId ?? null });
       if (p.releasedCents) {
@@ -111,33 +122,39 @@ async function upcoming(tenders: TenderSummary[], sellerId?: string): Promise<Up
   const awards = await db.award.findMany({
     where: {
       tenderId: { in: tenders.map((t) => t.id) },
-      authorization: { paypalAuthId: { not: null } },
+      endedAt: null,
+      authorizations: { some: { paypalAuthId: { not: null } } },
       ...(sellerId ? { bid: { sellerId } } : {}),
     },
     include: {
       tender: { select: { title: true, currency: true } },
-      authorization: true,
+      authorizations: { orderBy: { seq: "asc" } },
       bid: { select: { seller: { select: { name: true } } } },
       milestones: { include: { capture: true }, orderBy: { seq: "asc" } },
     },
   });
-  const now = Date.now();
+  const now = new Date();
   return awards.flatMap((a) => {
-    const next = a.milestones.find((m) => !m.capture);
-    if (!next) return [];
-    const paid = a.milestones.reduce((s, m) => s + (m.capture?.amountCents ?? 0), 0);
-    const isLast = next.seq === a.milestones.length;
-    const planned = isLast ? a.holdCents - paid : Math.round((a.holdCents * next.pct) / 100);
-    const exp = a.authorization?.expiresAt ?? null;
+    const planned = milestoneAmounts(a.holdCents, a.milestones.map((m) => ({ name: m.name, pct: m.pct })));
+    const step = nextStep(
+      a.milestones.map((m, i) => ({ phase: m.phase, plannedCents: planned[i], paid: !!m.capture && !isFailedCapture(m.capture.status) })),
+      a.authorizations.map((h) => ({ phase: h.phase, paypalAuthId: h.paypalAuthId, status: h.status, expiresAt: h.expiresAt })),
+      now,
+    );
+    if (step.kind === "done") return [];
+    const next = a.milestones[step.index];
+    const hold = step.kind === "pay" ? [...a.authorizations].reverse().find((h) => h.phase === step.phase && isLive(h, now)) : undefined;
+    const exp = hold?.expiresAt ?? null;
     return [
       {
         tenderId: a.tenderId,
         tenderTitle: a.tender.title,
         currency: a.tender.currency,
         milestone: next.name,
-        plannedCents: planned,
+        plannedCents: planned[step.index],
         holdExpiresAt: exp?.toISOString() ?? null,
-        daysLeft: exp ? Math.ceil((exp.getTime() - now) / 86_400_000) : null,
+        daysLeft: exp ? Math.ceil((exp.getTime() - now.getTime()) / 86_400_000) : null,
+        needsHold: step.kind === "hold" ? { phase: step.phase, amountCents: step.amountCents, replacing: step.replacing } : null,
         sellerName: a.bid.seller.name,
       },
     ];

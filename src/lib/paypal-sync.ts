@@ -33,7 +33,7 @@ export async function applyWebhook(event: WebhookEvent): Promise<string | null> 
     case "authorization": {
       const auth = await db.authorization.findUnique({
         where: { paypalAuthId: change.paypalAuthId },
-        include: { award: { select: { tenderId: true } } },
+        include: { award: { select: { tenderId: true } }, captures: { select: { amountCents: true, status: true } } },
       });
       if (!auth) return null;
       const tenderId = auth.award.tenderId;
@@ -44,11 +44,15 @@ export async function applyWebhook(event: WebhookEvent): Promise<string | null> 
         status = lapsed ? "EXPIRED" : change.status;
         if (status !== auth.status) await db.authorization.update({ where: { id: auth.id }, data: { status } });
       }
+      // Unused money on a hold our final capture did not close goes back to the buyer now.
+      const used = auth.captures.reduce((s, c) => s + (isFailedCapture(c.status) ? 0 : c.amountCents), 0);
       await appendEvent(tenderId, "paypal", change.status === "VOIDED" ? "paypal.hold.released" : "paypal.hold.confirmed", {
         ...note,
         paypalAuthId: change.paypalAuthId,
+        phase: auth.phase,
         status,
         amountCents: auth.amountCents,
+        unusedCents: change.status === "VOIDED" && auth.status !== "CAPTURED" ? auth.amountCents - used : 0,
       });
       return tenderId;
     }
@@ -68,7 +72,8 @@ export async function applyWebhook(event: WebhookEvent): Promise<string | null> 
           if (isFailedCapture(status) && !isFailedCapture(cap.status)) {
             // The step was recorded as paid; PayPal now says nothing was paid.
             await tx.milestone.update({ where: { id: cap.milestoneId }, data: { status: "pending" } });
-            if (cap.finalCapture && cap.authorization.award.tender.status === "COMPLETE") {
+            const lastOfOrder = cap.milestone.seq === cap.milestone.award._count.milestones;
+            if (lastOfOrder && cap.authorization.award.tender.status === "COMPLETE") {
               assertTransition("COMPLETE", "IN_DELIVERY");
               await tx.tender.updateMany({ where: { id: tenderId, status: "COMPLETE" }, data: { status: "IN_DELIVERY" } });
             }
@@ -113,7 +118,7 @@ function captureByPayPalId(paypalCaptureId: string) {
   return db.capture.findUnique({
     where: { paypalCaptureId },
     include: {
-      milestone: { select: { name: true } },
+      milestone: { select: { name: true, seq: true, award: { select: { _count: { select: { milestones: true } } } } } },
       authorization: { select: { award: { select: { tenderId: true, tender: { select: { status: true } } } } } },
     },
   });

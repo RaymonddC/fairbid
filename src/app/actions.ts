@@ -22,6 +22,8 @@ import {
   askQuestion,
   authorizeAward,
   captureMilestone,
+  endOrder,
+  startHold,
   closeBidding,
   publishTender,
   scoreTender,
@@ -99,6 +101,15 @@ export async function startAwardAction(tenderId: string, bidId: string) {
 
 export async function authorizeAwardAction(tenderId: string, orderId: string) {
   return run(async () => authorizeAward(tenderId, orderId, (await owner(tenderId)).id));
+}
+
+/** The next hold of a phased order, or a new hold for a phase whose hold lapsed. */
+export async function startHoldAction(tenderId: string) {
+  return run(async () => startHold(tenderId, (await owner(tenderId)).id));
+}
+
+export async function endOrderAction(tenderId: string) {
+  return run(async () => endOrder(tenderId, (await owner(tenderId)).id));
 }
 
 export async function payMilestoneAction(tenderId: string, milestoneId: string, amountCents: number) {

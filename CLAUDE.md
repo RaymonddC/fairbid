@@ -11,7 +11,8 @@ These carry the money and fairness story. Each one is a deliberate decision in `
 - **The seller is the payee from order creation.** FairBid never holds money.
 - **No void, refund or platform fee calls.** The sandbox refuses them with the seller as payee. Never claim void
   in the UI, docs or pitch. Unused budget goes back through `final_capture: true`. Do not use the word "escrow".
-- **Delivery fits inside the 29-day hold.** `publishTender` caps delivery at 28 days (`src/lib/workflow.ts`).
+- **No hold has to outlive PayPal's 29 days.** Over 28 days of delivery, an order is paid in phases with one hold each
+  (`src/lib/phases.ts`); a lapsed hold is replaced, never extended. Run `npm run check:phases` after touching money steps.
 - **Sealed bids stay on the server until close.** `isSealed` in `src/lib/tender.ts`; only the count leaves before.
 - **Code ranks, the AI explains.** Delivered cost (`src/lib/landed.ts`), scores (`src/lib/scoring.ts`) and
   collusion pairs are computed in code. An LLM writes reasons and questions only.

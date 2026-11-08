@@ -4,12 +4,15 @@
 import { db } from "./db";
 import { holdCents, landedCost, type TariffInput } from "./landed";
 import { isFailedCapture } from "./paypal/webhook";
+import { isLive, nextStep } from "./phases";
 import { DEMO_QUESTIONS } from "./review-fixture";
 import { bidLetter, criterionKind, weightedTotal } from "./scoring";
 import { isSealed, milestoneAmounts, type TenderStatus } from "./tender";
 import {
   atLeast,
+  type AwardNext,
   type AwardView,
+  type HoldView,
   type BidView,
   type ClarificationView,
   type CriterionView,
@@ -73,7 +76,7 @@ async function loadTender(id: string) {
       clarifications: { include: { replies: true }, orderBy: { sentAt: "asc" } },
       award: {
         include: {
-          authorization: { include: { captures: true } },
+          authorizations: { include: { captures: true }, orderBy: { seq: "asc" } },
           milestones: { include: { capture: true }, orderBy: { seq: "asc" } },
         },
       },
@@ -95,6 +98,8 @@ function milestoneViews(award: NonNullable<Loaded["award"]>): MilestoneView[] {
     pct: m.pct,
     plannedCents: planned[i],
     status: m.status,
+    phase: m.phase,
+    dueAt: m.dueDay != null ? new Date(award.awardedAt.getTime() + m.dueDay * 86_400_000).toISOString() : null,
     capture: m.capture
       ? {
           paypalCaptureId: m.capture.paypalCaptureId,
@@ -108,9 +113,69 @@ function milestoneViews(award: NonNullable<Loaded["award"]>): MilestoneView[] {
   }));
 }
 
-/** Money PayPal took from the hold: a declined or denied capture paid nothing. */
+/** Money PayPal took from a hold: a declined or denied capture paid nothing. */
 const paidOf = (m: MilestoneView) => (m.capture && !isFailedCapture(m.capture.status) ? m.capture : null);
 const sumPaid = (ms: MilestoneView[]) => ms.reduce((s, m) => s + (paidOf(m)?.amountCents ?? 0), 0);
+
+const DAY = 86_400_000;
+
+/** Every hold of an award, with what is used and whether it can still pay. */
+function holdViews(award: NonNullable<Loaded["award"]>, now = new Date()): HoldView[] {
+  return award.authorizations.map((a) => ({
+    id: a.id,
+    phase: a.phase,
+    seq: a.seq,
+    status: a.status,
+    paypalOrderId: a.paypalOrderId,
+    paypalAuthId: a.paypalAuthId,
+    expiresAt: a.expiresAt?.toISOString() ?? null,
+    amountCents: a.amountCents,
+    usedCents: a.captures.reduce((s, c) => s + (isFailedCapture(c.status) ? 0 : c.amountCents), 0),
+    live: isLive(a, now),
+    daysLeft: a.expiresAt ? Math.ceil((a.expiresAt.getTime() - now.getTime()) / DAY) : null,
+  }));
+}
+
+/** The money side of an award: what is paid, held, still to hold, and what happens next. */
+function paymentsOf(award: NonNullable<Loaded["award"]>, milestones: MilestoneView[]) {
+  const holds = holdViews(award);
+  const paidCents = sumPaid(milestones);
+  const refundedCents = milestones.reduce((s, m) => s + (paidOf(m)?.refundedCents ?? 0), 0);
+  const last = milestones[milestones.length - 1];
+  const complete = !!award.endedAt || (!!last && !!paidOf(last));
+  const step = nextStep(
+    milestones.map((m) => ({ phase: m.phase, plannedCents: m.plannedCents, paid: !!paidOf(m) })),
+    holds.map((h) => ({ phase: h.phase, paypalAuthId: h.paypalAuthId, status: h.status, expiresAt: h.expiresAt ? new Date(h.expiresAt) : null })),
+  );
+  const heldCents = holds.filter((h) => h.live).reduce((s, h) => s + h.amountCents - h.usedCents, 0);
+  const approved = holds.filter((h) => h.paypalAuthId);
+  // The hold that matters now: the live one for the current phase, else the newest approved one.
+  const current =
+    (step.kind !== "done" ? [...approved].reverse().find((h) => h.live && h.phase === step.phase) : undefined) ??
+    approved[approved.length - 1] ??
+    holds[holds.length - 1] ??
+    null;
+  const next: AwardNext =
+    complete || step.kind === "done"
+      ? { kind: "done" }
+      : step.kind === "pay"
+        ? { kind: "pay", phase: step.phase, milestoneId: milestones[step.index].id }
+        : { kind: "hold", phase: step.phase, milestoneId: milestones[step.index].id, amountCents: step.amountCents, replacing: step.replacing };
+  return {
+    holds: approved,
+    authorization: current,
+    phases: Math.max(1, ...milestones.map((m) => m.phase)),
+    paidCents,
+    refundedCents,
+    heldCents: complete ? 0 : heldCents,
+    notYetHeldCents: complete ? 0 : Math.max(0, award.holdCents - paidCents - heldCents),
+    releasedCents: complete ? award.holdCents - paidCents : 0,
+    complete,
+    endedAt: award.endedAt?.toISOString() ?? null,
+    next,
+    holdDaysLeft: current?.live ? current.daysLeft : null,
+  };
+}
 
 /** The buyer's view of one tender. */
 export async function getTenderView(id: string): Promise<TenderView | null> {
@@ -206,10 +271,6 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
     const win = t.bids.find((b) => b.id === t.award!.bidId)!;
     const view = bids.find((b) => b.id === win.id);
     const milestones = milestoneViews(t.award);
-    const paidCents = sumPaid(milestones);
-    const refundedCents = milestones.reduce((s, m) => s + (paidOf(m)?.refundedCents ?? 0), 0);
-    const complete = milestones.some((m) => paidOf(m)?.final);
-    const a = t.award.authorization;
     award = {
       bidId: win.id,
       letter: letters.get(win.id)!,
@@ -219,21 +280,8 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
       holdCents: t.award.holdCents,
       deliveredCents: view?.deliveredCents ?? t.award.holdCents,
       photos: photosOf(win.photos),
-      authorization: a
-        ? {
-            status: a.status,
-            paypalOrderId: a.paypalOrderId,
-            paypalAuthId: a.paypalAuthId,
-            expiresAt: a.expiresAt?.toISOString() ?? null,
-            amountCents: a.amountCents,
-          }
-        : null,
       milestones,
-      paidCents,
-      refundedCents,
-      releasedCents: complete ? t.award.holdCents - paidCents : 0,
-      complete,
-      holdDaysLeft: a?.expiresAt ? Math.ceil((a.expiresAt.getTime() - Date.now()) / 86_400_000) : null,
+      ...paymentsOf(t.award, milestones),
     };
   }
 
@@ -312,7 +360,10 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
         myReply: c.replies.find((r) => r.bidId === mine?.id)?.body ?? null,
       })),
     won: won
-      ? { holdCents: won.holdCents, paidCents: sumPaid(milestones), milestones }
+      ? (() => {
+          const pay = paymentsOf(won, milestones);
+          return { holdCents: won.holdCents, paidCents: pay.paidCents, heldCents: pay.heldCents, phases: pay.phases, next: pay.next, complete: pay.complete, endedAt: pay.endedAt, milestones };
+        })()
       : null,
   };
 }
@@ -324,8 +375,6 @@ export async function listTenders(buyerId?: string): Promise<TenderSummary[]> {
   return views
     .filter((v): v is TenderView => !!v)
     .map((v) => {
-      const capturedFinal = v.award?.complete ?? false;
-      const authorized = v.award?.authorization?.paypalAuthId != null;
       return {
         id: v.id,
         title: v.title,
@@ -336,7 +385,7 @@ export async function listTenders(buyerId?: string): Promise<TenderSummary[]> {
         bidCount: v.bidCount,
         deliverBy: deliverBy(v.closesAt, v.spec.deliveryDays),
         photo: v.photos[0] ?? v.award?.photos[0] ?? null,
-        heldCents: v.award && authorized && !capturedFinal ? v.award.holdCents - v.award.paidCents : 0,
+        heldCents: v.award?.heldCents ?? 0,
         paidCents: v.award?.paidCents ?? 0,
         savedCents: v.savedCents ?? 0,
         waitingReplies: v.waitingReplies,

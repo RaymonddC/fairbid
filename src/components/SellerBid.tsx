@@ -58,6 +58,11 @@ const copy = {
     locked: "Your price is locked. An answer cannot change it.",
     won: "You won this tender",
     paidSoFar: "Paid to you so far",
+    phase: (n: number, of: number) => `Phase ${n} of ${of}`,
+    heldNow: (amount: string) => `${amount} is held by PayPal for you now.`,
+    waitHold: (n: number) => `Phase ${n} is not held yet. Start its work once the buyer holds it: you will see it here.`,
+    lapsed: (n: number) => `The buyer's hold for phase ${n} lapsed before it was paid. Wait for a new hold before you go on.`,
+    ended: "The buyer ended the order here. What was paid is yours; nothing more is due.",
   },
   id: {
     title: "Penawaran Anda",
@@ -102,6 +107,11 @@ const copy = {
     locked: "Harga Anda terkunci. Jawaban tidak bisa mengubahnya.",
     won: "Anda memenangkan tender ini",
     paidSoFar: "Sudah dibayar ke Anda",
+    phase: (n: number, of: number) => `Tahap ${n} dari ${of}`,
+    heldNow: (amount: string) => `${amount} sedang ditahan PayPal untuk Anda.`,
+    waitHold: (n: number) => `Tahap ${n} belum ditahan. Mulai pekerjaannya setelah pembeli menahan dananya: akan terlihat di sini.`,
+    lapsed: (n: number) => `Penahanan dana tahap ${n} oleh pembeli habis sebelum dibayar. Tunggu penahanan baru sebelum melanjutkan.`,
+    ended: "Pembeli menghentikan pesanan di sini. Yang sudah dibayar milik Anda; tidak ada lagi yang jatuh tempo.",
   },
 };
 
@@ -206,16 +216,32 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                   {c.paidSoFar}: {eur(t.won.paidCents)} / {eur(t.won.holdCents)}
                 </Pill>
               </div>
+              {t.won.heldCents > 0 && <p className="text-sm text-ok">{c.heldNow(eur(t.won.heldCents))}</p>}
+              {t.won.endedAt ? (
+                <p className="text-sm text-muted">{c.ended}</p>
+              ) : (
+                t.won.next.kind === "hold" && (
+                  <p className="text-sm font-medium text-warn">{t.won.next.replacing ? c.lapsed(t.won.next.phase) : c.waitHold(t.won.next.phase)}</p>
+                )
+              )}
               <ol className="grid gap-1.5 text-sm">
-                {t.won.milestones.map((m) => (
-                  <li key={m.id} className="flex justify-between gap-3">
-                    <span className={m.capture ? "text-ok" : "text-muted"}>
-                      {m.capture ? "✓ " : ""}
-                      {m.name}
-                    </span>
-                    <span className="num">{eur(m.capture?.amountCents ?? m.plannedCents)}</span>
-                  </li>
-                ))}
+                {t.won.milestones.map((m, i, all) => {
+                  const paid = m.capture && !["DECLINED", "DENIED", "FAILED"].includes(m.capture.status) ? m.capture : null;
+                  return (
+                    <li key={m.id} className="grid gap-1.5">
+                      {t.won!.phases > 1 && (i === 0 || all[i - 1].phase !== m.phase) && (
+                        <span className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted">{c.phase(m.phase, t.won!.phases)}</span>
+                      )}
+                      <span className="flex justify-between gap-3">
+                        <span className={paid ? "text-ok" : "text-muted"}>
+                          {paid ? "✓ " : ""}
+                          {m.name}
+                        </span>
+                        <span className="num">{eur(paid?.amountCents ?? m.plannedCents)}</span>
+                      </span>
+                    </li>
+                  );
+                })}
               </ol>
             </Panel>
           )}

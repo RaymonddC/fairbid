@@ -51,15 +51,46 @@ function describe(
       };
     }
     case "award.started":
-      return { title: `Bid ${letterOf(p.bidId)} chosen, PayPal order created`, detail: `Hold of ${money(p.holdCents)} waiting for approval.` };
+      return {
+        title: `Bid ${letterOf(p.bidId)} chosen, PayPal order created`,
+        detail:
+          Number(p.phases ?? 1) > 1
+            ? `Order of ${money(p.holdCents)}, paid in ${String(p.phases)} phases. Hold of ${money(p.firstHoldCents)} for phase 1 waiting for approval.`
+            : `Hold of ${money(p.holdCents)} waiting for approval.`,
+      };
     case "award.authorized":
-      return { title: `PayPal placed the hold: ${money(p.amountCents)}`, detail: `Authorization ${String(p.paypalAuthId ?? "")}` };
+      return {
+        title: `PayPal placed the ${Number(p.phases ?? 1) > 1 ? "phase 1 " : ""}hold: ${money(p.amountCents)}`,
+        detail: `Authorization ${String(p.paypalAuthId ?? "")}`,
+      };
     case "milestone.paid":
       return {
         title: `${String(p.milestone ?? "Payment")}: ${money(p.amountCents)} paid${p.finalCapture ? ", final" : ""}`,
         detail: `Capture ${String(p.paypalCaptureId ?? "")}${p.releasedCents ? `. ${money(p.releasedCents)} released, never charged.` : ""}${
           p.status === "PENDING" ? ` PayPal is holding it: ${reasonText(String(p.reason ?? "")) ?? "it completes on its own"}.` : ""
         }`,
+      };
+    case "hold.started":
+      return {
+        title: p.replacing
+          ? `New hold requested for phase ${String(p.phase ?? "")}: ${money(p.amountCents)}`
+          : `Hold requested for phase ${String(p.phase ?? "")} of ${String(p.phases ?? "")}: ${money(p.amountCents)}`,
+        detail: `PayPal order ${String(p.paypalOrderId ?? "")}, waiting for the buyer's approval`,
+      };
+    case "hold.authorized":
+      return {
+        title: `PayPal placed the phase ${String(p.phase ?? "")} hold: ${money(p.amountCents)}`,
+        detail: `Authorization ${String(p.paypalAuthId ?? "")}`,
+      };
+    case "hold.declined":
+      return {
+        title: `PayPal declined the ${p.phase && Number(p.phase) > 1 ? `phase ${String(p.phase)} ` : ""}hold: ${money(p.amountCents)}`,
+        detail: `Nothing was reserved (${String(p.issue ?? "declined")}). The seller should not start this phase until a hold is in place.`,
+      };
+    case "order.ended":
+      return {
+        title: "The buyer ended the order between phases",
+        detail: `${money(p.paidCents)} paid stays paid; ${money(p.neverChargedCents)} was never held and is never charged.`,
       };
     case "milestone.declined":
       return {
@@ -73,8 +104,10 @@ function describe(
       return { title: `PayPal confirmed the hold: ${money(p.amountCents)}`, detail: `Authorization ${String(p.paypalAuthId ?? "")}, status ${String(p.status ?? "")}` };
     case "paypal.hold.released":
       return {
-        title: "PayPal released the hold",
-        detail: p.status === "EXPIRED" ? "It reached its 29-day limit. Nothing more can be paid from it." : "Nothing more can be paid from it.",
+        title: p.phase && Number(p.phase) > 1 ? `PayPal released the phase ${String(p.phase)} hold` : "PayPal released the hold",
+        detail: `${p.status === "EXPIRED" ? "It reached its 29-day limit. " : ""}${
+          p.unusedCents ? `${money(p.unusedCents)} unused went back to the buyer. ` : ""
+        }Nothing more can be paid from it.`,
       };
     case "paypal.payment.completed":
       return { title: `PayPal confirmed the payment: ${money(p.amountCents)}`, detail: `${String(p.milestone ?? "")}. Capture ${String(p.paypalCaptureId ?? "")}` };
@@ -97,7 +130,7 @@ function describe(
   }
 }
 
-const GOOD_NEWS = new Set(["award.authorized", "milestone.paid", "paypal.order.approved", "paypal.hold.confirmed", "paypal.payment.completed"]);
+const GOOD_NEWS = new Set(["award.authorized", "hold.authorized", "milestone.paid", "paypal.order.approved", "paypal.hold.confirmed", "paypal.payment.completed"]);
 const tone = (kind: string) =>
   GOOD_NEWS.has(kind) ? "bg-ok" : kind.startsWith("review") || kind.startsWith("paypal.") || kind === "milestone.declined" ? "bg-warn" : "bg-dye";
 

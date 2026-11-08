@@ -20,7 +20,8 @@ export type TenderStatus = (typeof TENDER_STATUSES)[number];
 
 // There is deliberately no way out of AWARDED except forward. With the seller
 // as payee, the PayPal sandbox refuses void, so a hold can only end in captures
-// (DECISIONS.md, "No void").
+// or lapse (DECISIONS.md, "No void"). Between phases, with no hold in place, the
+// buyer may end the order early: IN_DELIVERY to COMPLETE (`endOrder`).
 const TRANSITIONS: Record<TenderStatus, readonly TenderStatus[]> = {
   DRAFT: ["OPEN"],
   OPEN: ["CLOSED"],
@@ -62,11 +63,10 @@ export function canSubmitBid(status: TenderStatus, closesAt: Date, now = new Dat
   return status === "OPEN" && now < closesAt;
 }
 
-/** A PayPal authorization stays valid for 29 days, so delivery must fit inside it. */
-export const MAX_DELIVERY_DAYS = 29;
-
 export type MilestoneInput = { name: string; pct: number };
 
+/** The three steps of an order of up to 28 days. Longer orders add production
+ * checkpoints and are paid one phase at a time (`planMilestones`, src/lib/phases.ts). */
 export const DEFAULT_MILESTONES: readonly MilestoneInput[] = [
   { name: "Production started", pct: 30 },
   { name: "Shipped with tracking", pct: 40 },

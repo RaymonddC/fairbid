@@ -148,6 +148,13 @@ function UpcomingPanel({ items, buyer }: { items: UpcomingPayment[]; buyer: bool
                 <span className="text-xs text-muted">
                   {u.tenderTitle}, {buyer ? u.sellerName : "from the buyer"}
                 </span>
+                {u.needsHold && (
+                  <span className="text-xs font-medium text-warn">
+                    {buyer
+                      ? `${u.needsHold.replacing ? "The hold lapsed. Place a new one" : `Place the phase ${u.needsHold.phase} hold`}: ${money(u.needsHold.amountCents, u.currency)}`
+                      : `Waiting for the buyer to hold phase ${u.needsHold.phase} with PayPal`}
+                  </span>
+                )}
                 {u.holdExpiresAt && (
                   <span className={`text-xs ${u.daysLeft !== null && u.daysLeft <= 5 ? "font-medium text-flag" : "text-faint"}`}>
                     Hold ends {day(u.holdExpiresAt)}
@@ -188,7 +195,7 @@ function TenderCard({ t }: { t: TenderSummary }) {
       <div className="grid min-w-0 gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="grid min-w-0 gap-1">
-            <StatusPill status={t.status} waiting={t.waitingReplies} />
+            <StatusPill status={t.status} waiting={t.waitingReplies} heldCents={t.heldCents} />
             <h2 className="text-lg group-hover:text-dye">{t.title}</h2>
             <p className="text-sm text-muted">Deliver by {day(t.deliverBy)}.</p>
           </div>

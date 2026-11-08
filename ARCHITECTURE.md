@@ -24,14 +24,16 @@ DRAFT → OPEN → CLOSED → REVIEWING → [CLARIFYING] → PRICED → SCORED �
                                                                ↘ CANCELLED
 ```
 
-There is no way back from AWARDED. See "No void" in DECISIONS.md.
+There is no way back from AWARDED. See "No void" in DECISIONS.md. Two narrow exceptions: the buyer may end a phased order between phases, with no hold in place (IN_DELIVERY to COMPLETE), and PayPal's webhook reopens a completed tender whose final payment it denies afterwards (COMPLETE to IN_DELIVERY).
 
 ## Money flow
 
-1. The buyer approves the winner, and FairBid creates an order with `intent=AUTHORIZE` and the seller as payee.
+1. The buyer approves the winner, and FairBid creates an order with `intent=AUTHORIZE` and the seller as payee, for the first phase.
 2. The buyer approves in the PayPal popup, and FairBid authorizes the order. The money stays in the buyer's account, reserved in the seller's name.
-3. Each confirmed milestone is a partial capture to the seller.
-4. The last capture sets `final_capture: true`, which closes the hold and releases anything unused to the buyer.
+3. Each confirmed milestone is a partial capture to the seller from its phase's hold.
+4. The last capture of a phase sets `final_capture: true`, which closes that hold. On the last phase it may be less than planned, and the rest is released to the buyer.
+5. An order of up to 28 days is one phase. A longer one (up to 180 days) has one hold per phase (`src/lib/phases.ts`): when a phase is paid, the buyer approves the next phase's hold the same way. A hold that lapses with steps unpaid is replaced by a new one for what the phase still owes.
+6. PayPal's webhook reports every hold and capture from PayPal's side (`src/lib/paypal-sync.ts`).
 
 ## Rules that must hold
 

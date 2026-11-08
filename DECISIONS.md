@@ -14,11 +14,18 @@ With the seller as payee, the sandbox refuses void (`PERMISSION_DENIED`), refund
 
 An authorization reserves money in the buyer's account. It does not move it. If the buyer cannot cover the amount, authorization fails at award, before the seller starts work. A later capture can still fail, so milestones keep the amount at risk small. Do not use the word escrow.
 
-## Delivery fits inside 29 days
+## One hold per phase, each inside 29 days
 
-A PayPal authorization is valid for 29 days. Within them, a capture is guaranteed for the first 3 days (the honor period); after that it is still allowed, but subject to the buyer's funds. Reauthorizing after the honor period confirms the funds and starts a new 3-day honor period, as often as needed, but it never extends the 29 days: PayPal's reference says that after 30 days a new authorization is required. So the delivery window is capped at 28 days inside the hold, and FairBid does not reauthorize until the retest due on 10 Nov passes.
+A PayPal authorization is valid for 29 days. Within them, a capture is guaranteed for the first 3 days (the honor period); after that it is still allowed, but subject to the buyer's funds. Reauthorizing after the honor period confirms the funds and starts a new 3-day honor period, as often as needed, but it never extends the 29 days: PayPal's reference says that after 30 days a new authorization is required. FairBid does not reauthorize until the retest due on 10 Nov passes.
 
-An order that needs longer than 29 days, say a two-month production run, cannot be covered by one hold. The honest design is one hold per phase: the buyer approves a hold for the phase about to start, it is captured as that phase is delivered, and the next phase gets its own hold. This is not built; see "Not built yet" in the README.
+So no hold may have to last longer than 28 days. An order of up to 28 days is one phase with one hold, as it always was. A longer order, up to 180 days, is split into phases (`src/lib/phases.ts`): production checkpoints are added so no two steps are more than 28 days apart, and consecutive steps due within 28 days of a phase's start share that phase. Each phase gets its own hold, for exactly what its steps cost, approved by the buyer in PayPal when the phase starts. The last step of a phase is a final capture, which closes that hold.
+
+Two things follow, and both are deliberate:
+
+- **The seller starts a phase only once it is held.** A step can only be paid from a live hold for its phase, and the seller's page says whether the next phase is held. Between phases, with no hold in place, the buyer may end the order: what was paid stays paid, and the rest was never held, so it is never charged. A live hold cannot be ended that way, because FairBid cannot void a hold that pays the seller.
+- **A hold that lapses is replaced, never stretched.** If production runs late and a phase's hold expires with steps unpaid, the unused money goes back to the buyer on its own and the buyer is asked for a new hold of what the phase still owes. The seller is told to wait for it.
+
+The cost is one PayPal approval per phase, for example three for a two-month order. That is the price of never claiming a hold PayPal does not give.
 
 ## PayPal's webhook is the second witness
 

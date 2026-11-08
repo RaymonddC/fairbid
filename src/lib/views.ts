@@ -97,8 +97,36 @@ export interface MilestoneView {
   /** Planned amount from the hold; the last one absorbs rounding. */
   plannedCents: number;
   status: "pending" | "confirmed" | "captured";
+  /** Which phase's hold pays this step (src/lib/phases.ts). */
+  phase: number;
+  /** When the step is expected, counted from the award. */
+  dueAt: string | null;
   capture: CaptureView | null;
 }
+
+/** One PayPal hold. An order over 28 days has one per phase. */
+export interface HoldView {
+  id: string;
+  phase: number;
+  seq: number;
+  status: string;
+  paypalOrderId: string;
+  paypalAuthId: string | null;
+  expiresAt: string | null;
+  amountCents: number;
+  /** Captured from it so far. */
+  usedCents: number;
+  /** Approved, not closed, not past its expiry: it can still pay. */
+  live: boolean;
+  daysLeft: number | null;
+}
+
+/** What the buyer does next on an award. */
+export type AwardNext =
+  | { kind: "done" }
+  | { kind: "pay"; phase: number; milestoneId: string }
+  /** Approve a hold first: the next phase's, or a new one for a phase whose hold lapsed. */
+  | { kind: "hold"; phase: number; milestoneId: string; amountCents: number; replacing: boolean };
 
 export interface AwardView {
   bidId: string;
@@ -109,13 +137,25 @@ export interface AwardView {
   holdCents: number;
   deliveredCents: number;
   photos: string[];
-  authorization: { status: string; paypalOrderId: string; paypalAuthId: string | null; expiresAt: string | null; amountCents: number } | null;
+  /** The hold that matters now: the live one for the current phase, else the newest approved one. */
+  authorization: HoldView | null;
+  /** Every hold the buyer approved, oldest first. */
+  holds: HoldView[];
+  /** Phases the order is paid in: 1 for 28 days of delivery or less. */
+  phases: number;
+  /** Left on live holds now. */
+  heldCents: number;
+  /** Planned for phases whose hold is not placed yet. */
+  notYetHeldCents: number;
+  next: AwardNext;
+  /** Set when the buyer ended the order between phases. */
+  endedAt: string | null;
   milestones: MilestoneView[];
   /** Taken from the hold by captures PayPal accepted, pending ones included. */
   paidCents: number;
   /** Given back by the seller afterwards, from their own account. */
   refundedCents: number;
-  /** Released back to the buyer by the final capture. */
+  /** Never charged: released by the final capture, or never held when the order was ended early. */
   releasedCents: number;
   complete: boolean;
   /** Whole days until the hold expires, counted when the page was read. */
@@ -174,7 +214,16 @@ export interface SellerTenderView {
   } | null;
   questions: { id: string; topic: string; question: string; sentAt: string; myReply: string | null }[];
   /** Set when this seller won: what has been paid so far. */
-  won: { holdCents: number; paidCents: number; milestones: MilestoneView[] } | null;
+  won: {
+    holdCents: number;
+    paidCents: number;
+    heldCents: number;
+    phases: number;
+    next: AwardNext;
+    complete: boolean;
+    endedAt: string | null;
+    milestones: MilestoneView[];
+  } | null;
 }
 
 export interface TenderSummary {

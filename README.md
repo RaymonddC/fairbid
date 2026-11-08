@@ -18,13 +18,14 @@ Working now:
 - A live activity log that refreshes itself, with agent and AI events labelled
 - Post a tender, Reset demo
 - Money steps are safe to repeat: PayPal calls time out and retry with their idempotency key, a lost hold is read back from the order, a double click pays once, and repeated webhooks are ignored
+- Orders longer than a PayPal hold: up to 180 days, paid in phases with one hold each, a lapsed hold replaced for what its phase still owes, and the buyer able to end the order between phases. `npm run check:phases` runs four orders end to end against the local database with a stand-in PayPal
 - PayPal's webhook keeps the records honest after the fact: a payment held for review shows as pending until PayPal completes or denies it, a denied payment reopens its step, a lapsed hold is shown as gone, and a seller's refund is recorded. Every report appears in the activity log as PayPal's own line
 - Postgres schema, migration, and a repeat-safe demo seed
 - Landed-cost engine, checked against the demo tender's published figures
 - Tender state machine and hash-chained event log
 - PayPal client with the seller as payee, and a verified, replay-safe webhook route
 
-Not built yet: WhatsApp and Telegram; one hold per phase for orders that need longer than PayPal's 29-day hold (DECISIONS.md, "Delivery fits inside 29 days"). The demo tender keeps its scripted questions, because its seeded replies answer them; every other tender gets the reviewer's own questions. The AI roles have only run on their fixtures so far: no live Claude call has been tested yet. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
+Not built yet: WhatsApp and Telegram. The demo tender keeps its scripted questions, because its seeded replies answer them; every other tender gets the reviewer's own questions. The AI roles have only run on their fixtures so far: no live Claude call has been tested yet. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
 
 ## Guardrails, and where they live in code
 
@@ -38,7 +39,8 @@ Not built yet: WhatsApp and Telegram; one hold per phase for orders that need lo
 | Code ranks, the AI only explains | Scores and collusion pairs are computed in code (`src/lib/scoring.ts`); an LLM writes reasons and questions, so two runs cannot rank bids differently |
 | A collusion flag never removes a bid | `findCoordinatedPairs` only flags a pair for the buyer to look at (`src/lib/scoring.ts`) |
 | Questions cannot leak an early hint | `askQuestion` refuses while bidding is open, and after a winner is chosen (`src/lib/workflow.ts`) |
-| The hold covers the whole delivery | Delivery is capped at 28 days, inside PayPal's 29-day authorization (`publishTender`, `src/lib/workflow.ts`) |
+| No hold has to outlive PayPal's 29 days | Orders of up to 28 days get one hold. Longer orders, up to 180 days, are paid in phases: each phase's steps fall due within 28 days, and each phase gets its own hold, approved by the buyer when it starts (`planMilestones`, `nextStep`, `src/lib/phases.ts`). A hold that lapses with money owed can be replaced, never stretched |
+| Seller never works uncovered | A phase can only be paid from a live hold for that phase; the seller sees whether the next phase is held, and the buyer can end the order only between phases, when no hold is in place (`captureMilestone`, `endOrder`, `src/lib/workflow.ts`) |
 | Payments in order, never over the hold | `captureMilestone` pays the next step only, and refuses more than is left (`src/lib/workflow.ts`) |
 | Unused budget goes back to the buyer | The last capture sets `final_capture: true`, which closes the hold. No void or refund calls exist, because the sandbox refuses them with the seller as payee |
 | Every step on the record | A hash-chained event log; changing any past event breaks the chain (`src/lib/audit.ts`) |
