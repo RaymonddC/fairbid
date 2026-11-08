@@ -69,7 +69,7 @@ npm run channels:telegram -- set
 npm run channels:telegram -- info
 ```
 
-**WhatsApp (Twilio).** Off in production: a Twilio trial account cannot send (see DECISIONS.md), so the repo variable `TWILIO_WHATSAPP_FROM` is unset, which hides the WhatsApp row. To turn it on, upgrade Twilio, set the variable again, and check a send first. The secret `fairbid-twilio-auth-token` (value on stdin, like the others) is mapped in `deploy.yml`, so create it, and let `fairbid-run` read it, before deploying. Set `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_FROM` (the sandbox number, for example `+14155238886`) and `CHANNEL_ALLOWLIST` (the E.164 numbers of the people who will link, separated by semicolons). In the Twilio console, Messaging, Try it out, Send a WhatsApp message, Sandbox settings: set "When a message comes in" to `<service url>/api/webhooks/whatsapp` with method POST. Each person joins the sandbox from their phone with the join phrase shown there. Twilio signs the exact URL, so `PUBLIC_BASE_URL` must be the service URL with no trailing slash and no path.
+**WhatsApp (Twilio).** Off in production: a Twilio trial account cannot send (see DECISIONS.md), so the repo variable `WHATSAPP_ENABLED` is unset, which hides the WhatsApp row and leaves the other Twilio settings in place. To turn it on, upgrade Twilio, set `WHATSAPP_ENABLED` to `true`, redeploy, and check a send first. The secret `fairbid-twilio-auth-token` (value on stdin, like the others) is mapped in `deploy.yml`, so create it, and let `fairbid-run` read it, before deploying. Set `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_FROM` (the sandbox number, for example `+14155238886`) and `CHANNEL_ALLOWLIST` (the E.164 numbers of the people who will link, separated by semicolons). In the Twilio console, Messaging, Try it out, Send a WhatsApp message, Sandbox settings: set "When a message comes in" to `<service url>/api/webhooks/whatsapp` with method POST. Each person joins the sandbox from their phone with the join phrase shown there. Twilio signs the exact URL, so `PUBLIC_BASE_URL` must be the service URL with no trailing slash and no path.
 
 A seller then presses **Link** on the dashboard and sends the code from their chat. Twilio's sandbox accepts free text only within 24 hours of the seller's last message to it; a seller who has not written in a day will not get the question there (the inbox still has it), so send `link` or any message shortly before a demo.
 
@@ -95,6 +95,7 @@ MCP_SELLER_KEYS="$(gcloud secrets versions access latest --secret=fairbid-mcp-se
 | `PUBLIC_BASE_URL` | The service URL. Twilio signatures are checked against it, and the Telegram webhook script reads it |
 | `TELEGRAM_BOT_USERNAME` | The bot's username, no @. Telegram is off while empty |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_WHATSAPP_FROM` | Twilio account and sandbox number. WhatsApp is off while either is empty |
+| `WHATSAPP_ENABLED` | `true` switches WhatsApp on, if the Twilio settings are also set. Empty means off |
 | `CHANNEL_ALLOWLIST` | Numbers that may link WhatsApp, separated by semicolons. Empty means nobody |
 | `AI_MODEL` | Gemini model for the AI roles. Empty means `gemini-3.8-flash` |
 | `AI_ENABLED` | `false` turns the AI roles off. Empty means on |

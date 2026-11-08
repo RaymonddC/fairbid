@@ -60,7 +60,10 @@ export function twiml(message: string): string {
 export const whatsappChannel: Channel = {
   kind: "whatsapp",
   label: "WhatsApp",
+  // Off unless WHATSAPP_ENABLED=true, even with every Twilio setting present: a Twilio trial
+  // account cannot send, so the channel stays hidden until the account can (DECISIONS.md).
   configured: () =>
+    process.env.WHATSAPP_ENABLED === "true" &&
     Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM && process.env.PUBLIC_BASE_URL),
   parseInbound: parseWhatsAppForm,
   async send(address, text) {
