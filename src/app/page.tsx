@@ -279,18 +279,18 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
           <Kpi tone="warn" label="Waiting for your bid" value={String(open)} note={open ? "Open tenders you have not bid on" : "You have bid on every open tender"} />
         </dl>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <QuestBoard quests={quests} />
-          <UpcomingPanel items={cf.upcoming} buyer={false} />
-        </div>
-
-        <TransactionsGrid txs={cf.transactions} title="Payments received" showSeller={false} />
         <ChannelLinker
           channels={availableChannels().map((c) => ({
             ...c,
             linked: links.find((l) => l.kind === c.kind) ? maskAddress(c.kind, links.find((l) => l.kind === c.kind)!.address) : null,
           }))}
         />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <QuestBoard quests={quests} />
+          <UpcomingPanel items={cf.upcoming} buyer={false} />
+        </div>
+
+        <TransactionsGrid txs={cf.transactions} title="Payments received" showSeller={false} />
         <p className="text-xs text-faint">
           Rupiah amounts are estimates: PayPal fee {PAYPAL_FEE_PCT}% + 0.55 per payment, as charged in the sandbox, and assumed rates of Rp{" "}
           {IDR_PER.EUR.toLocaleString("id-ID")} per euro and Rp {IDR_PER.USD.toLocaleString("id-ID")} per dollar. Your PayPal account shows the real figures.
