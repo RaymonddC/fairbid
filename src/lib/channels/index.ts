@@ -57,6 +57,9 @@ export async function linksOf(sellerId: string) {
 
 // ── Inbound ──────────────────────────────────────────────────────────────────
 
+const FOLLOW_UP_MS = 10 * 60_000;
+const MAX_ANSWER = 1000; // the limit addReply keeps
+
 const HOW_TO_LINK = "This chat is not linked to a FairBid seller. Sign in to FairBid as a seller, open your dashboard, and press Link on this channel.";
 
 /** Handles one inbound message and returns the text to answer with. Throws only for
@@ -80,17 +83,31 @@ export async function handleInbound(msg: InboundMessage): Promise<string> {
   } else {
     const recent = await db.channelMessage.findMany({ where: { linkId: link.id }, orderBy: { sentAt: "desc" }, take: 20 });
     const replies = recent.length
-      ? await db.reply.findMany({ where: { bidId: { in: recent.map((m) => m.bidId) } }, select: { clarificationId: true, bidId: true } })
+      ? await db.reply.findMany({ where: { bidId: { in: recent.map((m) => m.bidId) } }, select: { clarificationId: true, bidId: true, receivedAt: true } })
       : [];
-    const open = recent.filter((m) => !replies.some((r) => r.clarificationId === m.clarificationId && r.bidId === m.bidId));
-    if (open.length === 0) return "There is no question waiting for you. When a buyer asks one, it appears here.";
+    const replyOf = (m: { clarificationId: string; bidId: string }) => replies.find((r) => r.clarificationId === m.clarificationId && r.bidId === m.bidId);
+    const open = recent.filter((m) => !replyOf(m));
     if (open.length > 1) return `You have ${open.length} questions waiting. Reply to the message of the one you are answering, so the answer goes to the right buyer.`;
-    target = open[0];
+    // A second message right after an answer continues it, as people write in bursts.
+    const justAnswered = recent.find((m) => {
+      const r = replyOf(m);
+      return r && Date.now() - r.receivedAt.getTime() < FOLLOW_UP_MS;
+    });
+    target = open[0] ?? justAnswered ?? null;
+    if (!target) return "There is no question waiting for you. When a buyer asks one, it appears here.";
   }
 
   const account = await db.account.findFirst({ where: { sellerId: link.sellerId }, select: { id: true } });
+  // One answer per question: a further message adds to it instead of replacing it, so the
+  // seller can answer in several bubbles.
+  const previous = await db.reply.findUnique({
+    where: { clarificationId_bidId: { clarificationId: target.clarificationId, bidId: target.bidId } },
+    select: { body: true },
+  });
+  const body = previous ? `${previous.body}\n\n${msg.text.trim()}` : msg.text;
+  if (body.trim().length > MAX_ANSWER) return `That would make the answer longer than ${MAX_ANSWER} characters. Shorten it, or finish in FairBid.`;
   try {
-    await addReply(target.clarificationId, target.bidId, msg.text, account?.id ?? `seller:${link.sellerId}`, msg.kind);
+    await addReply(target.clarificationId, target.bidId, body, account?.id ?? `seller:${link.sellerId}`, msg.kind);
   } catch (error) {
     if (error instanceof StepError) return error.message;
     throw error;
