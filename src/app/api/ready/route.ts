@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { aiEnabled } from "@/lib/ai/claude";
-import { aiModel } from "@/lib/ai-config";
+import { aiEnabled } from "@/lib/ai/model";
+import { aiLocation, aiModel } from "@/lib/ai-config";
 import { db } from "@/lib/db";
 import { createPayPalClient, loadConfig } from "@/lib/paypal/client";
 
@@ -48,7 +48,7 @@ export async function GET() {
       name: "llm",
       ok: true,
       critical: false,
-      detail: aiEnabled() ? `Live model: ${aiModel()}.` : "Scripted fixtures: ANTHROPIC_API_KEY is not set.",
+      detail: aiEnabled() ? `Live model: ${aiModel()} on Vertex AI (${aiLocation()}).` : "Scripted fixtures: GOOGLE_CLOUD_PROJECT is not set.",
     },
     {
       name: "paypal_webhook",

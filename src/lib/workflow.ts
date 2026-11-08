@@ -307,7 +307,7 @@ export async function scoreTender(tenderId: string, actor: string) {
   });
   await appendEvent(tenderId, actor, "tender.scored", {
     bids: priced.length,
-    judgedBy: judged.length ? (scoreSources.every((s) => s === "claude") ? "claude" : scoreSources.some((s) => s === "claude") ? "mixed" : "fixture") : "code",
+    judgedBy: judged.length ? (scoreSources.every((s) => s === "model") ? "model" : scoreSources.some((s) => s === "model") ? "mixed" : "fixture") : "code",
   });
 }
 

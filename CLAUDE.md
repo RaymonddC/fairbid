@@ -30,8 +30,8 @@ These carry the money and fairness story. Each one is a deliberate decision in `
 - Secrets never go in the repo, in chat or in a commit. They live in `.env` locally and Secret Manager in production.
 - Schema changes are a new Prisma migration (`npx prisma migrate dev --name ...`); never edit an applied one.
 - The demo seed only touches the demo tender (`src/lib/demo-reset.ts`). Keep it that way: other tenders are real.
-- AI code reads the model from `ANTHROPIC_MODEL`. Without `ANTHROPIC_API_KEY` it must fall back to the fixtures in
-  `src/lib/review-fixture.ts`, so judges can run the whole flow without a key.
+- The AI roles run on Gemini through Vertex AI (`src/lib/ai/model.ts`), model from `AI_MODEL`. With the AI off or failing
+  they must fall back to their fixtures (`src/lib/ai/roles.ts`, `src/lib/review-fixture.ts`), so the whole flow always runs.
 - Commit messages: one imperative sentence that says why.
 
 ## Run it

@@ -30,6 +30,10 @@ One deployable, one language, and shared types in place of an API document. Host
 
 Everything stays inside Google Cloud. Every resource is named `fairbid-…`, including the GitHub sign-in pool, so FairBid can share a billed project with another service without touching it. The database is the smallest shared-core Cloud SQL Postgres. It costs about US$10 a month even when idle, so delete it after judging. It accepts no direct connections: Cloud Run uses the Cloud SQL connector, and CI migrations go through the Cloud SQL proxy.
 
+## Gemini on Vertex AI for the AI roles
+
+The service already runs on Google Cloud, so the roles call Gemini through Vertex AI as the service's own account: no API key to create, store or leak, and the cost sits on the same bill. Gemini 3.8 Flash is the default because, in a test on 8 Nov, it gave the right customs code for cotton napkins (6302.51) where 2.5 Flash did not. 2.5 Flash stays as a one-time fallback. Every role still has a scripted fixture, so the flow runs with the AI off.
+
 ## "Good" means the buyer's published criteria
 
 FairBid does not decide what is good. The buyer publishes criteria before bidding opens, and every bid is judged against them with a written reason.

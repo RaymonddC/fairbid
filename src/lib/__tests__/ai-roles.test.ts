@@ -4,9 +4,9 @@ import { describe, it } from "node:test";
 import { classifyHs, explainPair, HS_FIXTURE, PAIR_FIXTURE, reviewProposals, scoreBlind, writeTender } from "../ai/roles";
 import { clampDraft, draftFrom } from "../draft";
 
-// No key: every role must answer from its fixture, with no network call. The key is
+// No project: every role must answer from its fixture, with no network call. It is
 // read at call time, so removing it here covers every test below.
-delete process.env.ANTHROPIC_API_KEY;
+delete process.env.GOOGLE_CLOUD_PROJECT;
 
 const REVIEW_INPUT = {
   title: "300 napkins",

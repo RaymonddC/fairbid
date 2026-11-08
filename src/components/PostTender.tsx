@@ -101,12 +101,12 @@ export function PostTender() {
             onClick={async () => {
               setPhase("drafting");
               setDraftNote(null);
-              // The tender writer (Claude, or its scripted guess without a key). A failed
+              // The tender writer (Gemini, or its scripted guess without the AI). A failed
               // call still leaves a draft to edit, never an empty form.
               const r = await draftTenderAction(need);
               if (r.ok) {
                 setD(r.draft);
-                setDraftNote(r.source === "claude" ? null : "Drafted by the scripted guess, not the AI. Check every field.");
+                setDraftNote(r.source === "model" ? null : "Drafted by the scripted guess, not the AI. Check every field.");
               } else {
                 setD(draftFrom(need));
                 notifyError(r.error);

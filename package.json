@@ -19,7 +19,7 @@
     "bots": "tsx scripts/seller-bots.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "1.3.0",
+    "@google/genai": "2.31.0",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",

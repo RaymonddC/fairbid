@@ -33,7 +33,7 @@ To reset the hosted demo data, run the **Deploy to Cloud Run** workflow by hand 
 
 ## Turn on the AI roles
 
-In Secret Manager, open `fairbid-anthropic-key`, select **New version**, paste an Anthropic API key and save. Then redeploy (re-run the latest **Deploy to Cloud Run**). `/api/ready` then says "Live model". A version holding a single space turns the AI off again, and the roles answer from their fixtures.
+The roles run on Gemini through Vertex AI. The service signs in as its own service account (`roles/aiplatform.user`, granted by the setup script), so there is no key to store. `/api/ready` says which model is live. To turn the AI off, set the `AI_ENABLED` repo variable to `false` and redeploy: every role then answers from its scripted fixture.
 
 ## Seller agents
 
@@ -51,7 +51,8 @@ MCP_SELLER_KEYS="$(gcloud secrets versions access latest --secret=fairbid-mcp-se
 | `PAYPAL_WEBHOOK_ID` | Turns on PayPal webhooks. Without it they are rejected |
 | `SELLER_D_PAYPAL_EMAIL` | Sari's sandbox business account, the payee of the demo award. Without it PayPal refuses the award. After setting it, run the deploy with **seed** ticked or press Reset demo |
 | `PUBLIC_BASE_URL` | The service URL, for Twilio |
-| `ANTHROPIC_MODEL` | Claude model for the AI roles. Empty means `claude-opus-5-5` |
+| `AI_MODEL` | Gemini model for the AI roles. Empty means `gemini-3.8-flash` |
+| `AI_ENABLED` | `false` turns the AI roles off. Empty means on |
 | `MIN_INSTANCES` | `1` keeps one instance warm. Empty means scale to zero |
 
 ## Judging week

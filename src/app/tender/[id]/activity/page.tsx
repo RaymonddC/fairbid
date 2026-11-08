@@ -40,13 +40,13 @@ function describe(
     case "tender.scored":
       return {
         title: "Bids priced at delivered cost and scored",
-        detail: p.judgedBy === "claude" ? "Judged criteria scored blind by the AI." : p.judgedBy === "fixture" ? "Judged criteria from scripted scores (no AI key)." : undefined,
+        detail: p.judgedBy === "model" ? "Judged criteria scored blind by the AI." : p.judgedBy === "fixture" ? "Judged criteria from scripted scores (no AI key)." : undefined,
       };
     case "review.completed": {
       const q = (p.questions ?? {}) as { count?: number; source?: string };
       return {
         title: "AI review finished",
-        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "claude" ? "written by the AI" : "scripted"}. Code decides prices and flags; the AI only writes.`,
+        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; the AI only writes.`,
       };
     }
     case "award.started":

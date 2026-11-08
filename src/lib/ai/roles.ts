@@ -1,15 +1,15 @@
 // FairBid's five AI roles. Each takes plain inputs, returns checked JSON, and has a
-// fixture used when there is no API key or a call fails (src/lib/ai/claude.ts).
+// fixture used when the AI is off or a call fails (src/lib/ai/model.ts).
 // Server only. Nothing here touches the database: workflow.ts reads and writes.
 
 import { z } from "zod";
 import { clampDraft, draftFrom, type Draft } from "../draft";
-import { runRole, type AiResult, type UserContent } from "./claude";
+import { runRole, type AiResult, type UserPart } from "./model";
 import { BLIND_SCORER, COLLUSION_REASONER, HS_CLASSIFIER, PROPOSAL_REVIEWER, TENDER_WRITER } from "./prompts";
 
 // ── 1. Tender writer ─────────────────────────────────────────────────────────
 
-const DraftSchema = z.object({
+export const DraftSchema = z.object({
   title: z.string(),
   item: z.string(),
   quantity: z.number(),
@@ -32,7 +32,7 @@ export async function writeTender(need: string): Promise<AiResult<Draft>> {
 
 const HS_CODE = /^\d{4}\.\d{2}$/;
 
-const HsSchema = z.object({
+export const HsSchema = z.object({
   hsCode: z.string(),
   description: z.string(),
   confidence: z.number(),
@@ -92,7 +92,7 @@ export interface ReviewInput {
   bids: ReviewBid[];
 }
 
-const ReviewSchema = z.object({
+export const ReviewSchema = z.object({
   questions: z.array(z.object({ topic: z.string(), question: z.string(), bids: z.array(z.string()) })),
 });
 export type ReviewQuestion = z.infer<typeof ReviewSchema>["questions"][number];
@@ -135,7 +135,7 @@ export interface ScoreInput {
   clarifications: { question: string; reply: string | null }[];
 }
 
-const ScoreSchema = z.object({
+export const ScoreSchema = z.object({
   scores: z.array(z.object({ criterion: z.string(), score: z.number(), reason: z.string() })),
 });
 export type CriterionScore = { score: number; reason: string };
@@ -148,11 +148,11 @@ export async function scoreBlind(
   fixture: (criterion: string) => CriterionScore,
 ): Promise<AiResult<Record<string, CriterionScore>>> {
   // Up to two real photos go along; the drawn SVG placeholders carry no evidence.
-  const images: UserContent = input.bid.photos
+  const images: UserPart[] = input.bid.photos
     .map((p) => RASTER.exec(p))
     .filter((m): m is RegExpExecArray => m !== null)
     .slice(0, 2)
-    .map((m) => ({ type: "image", source: { type: "base64", media_type: m[1] as "image/jpeg" | "image/png" | "image/webp", data: m[2] } }));
+    .map((m) => ({ image: { mimeType: m[1] as "image/jpeg" | "image/png" | "image/webp", data: m[2] } }));
   const text = JSON.stringify(
     {
       tender: input.tender,
@@ -168,7 +168,7 @@ export async function scoreBlind(
     {
       role: "blind_scorer",
       system: BLIND_SCORER,
-      user: [...images, { type: "text", text }],
+      user: [...images, { text }],
       schema: ScoreSchema,
       effort: "medium",
     },
@@ -186,7 +186,7 @@ export async function scoreBlind(
       usedFixture = true;
     }
   }
-  return { value: out, source: usedFixture ? "fixture" : "claude" };
+  return { value: out, source: usedFixture ? "fixture" : "model" };
 }
 
 // ── 5. Collusion reasoner ────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ export interface PairInput {
   notes: [string, string];
 }
 
-const ReasonSchema = z.object({ reason: z.string() });
+export const ReasonSchema = z.object({ reason: z.string() });
 
 export const PAIR_FIXTURE = "These two bids look coordinated. A person should look before awarding.";
 

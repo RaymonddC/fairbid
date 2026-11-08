@@ -13,7 +13,7 @@ Working now:
 - Buyer dashboard with cash flow; seller quest board
 - Buyer steps: sealed bids, close, clarification inbox (in-app), delivered-cost compare with a blind score grid, award with the PayPal button, milestone payments
 - Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
-- Five AI roles on Claude (`src/lib/ai/`): the tender writer drafts a tender from plain words, the HS classifier suggests the customs code, the proposal reviewer writes questions to sellers after close, the blind scorer judges the criteria code cannot, and the collusion reasoner explains why code paired two bids. Prompts are in `src/lib/ai/prompts.ts`. Without `ANTHROPIC_API_KEY`, or when a call fails, each role answers from its scripted fixture, so the flow always runs
+- Five AI roles on Gemini through Vertex AI (`src/lib/ai/`): the tender writer drafts a tender from plain words, the HS classifier suggests the customs code, the proposal reviewer writes questions to sellers after close, the blind scorer judges the criteria code cannot, and the collusion reasoner explains why code paired two bids. Prompts are in `src/lib/ai/prompts.ts`. Without the AI, or when a call fails, each role answers from its scripted fixture, so the flow always runs
 - Seller agents over MCP (`/api/mcp`, Streamable HTTP, one API key per seller): tools to list open tenders, read one, seal a bid, check its status and answer questions. Four scripted agents (`src/lib/agents/bots.ts`, `npm run bots`) bid and answer through it; two of them coordinate, and the collusion screen flags them. The buyer's **Invite seller agents** button runs them on a tender
 - A live activity log that refreshes itself, with agent and AI events labelled
 - Post a tender, Reset demo
@@ -51,7 +51,7 @@ For the demo tender: a EUR 2,540 hold paid out in three milestones of 762, 1,016
 |---|---|---|
 | PayPal fee on what the seller receives | The seller, deducted by PayPal | EUR 110: 4.40% plus EUR 0.35 per capture, the rate for an Indonesian seller paid from abroad ([PayPal Indonesia fees](https://www.paypal.com/id/webapps/mpp/merchant-fees), read 8 Nov 2026). Converting the euros to rupiah adds 3.0% |
 | FairBid's fee | Nobody | EUR 0. Platform fees need PayPal Multiparty, which the sandbox does not offer with the seller as payee |
-| Claude, five AI roles | FairBid | Estimate, until real runs are measured: about US$0.30 per tender on Claude Opus 5.5 ($4 in, $20 out per million tokens), assuming about 6,000 tokens in and 1,500 out per role |
+| Gemini 3.8 Flash on Vertex AI, five AI roles | FairBid | Under US$0.10 per tender at list price ($1.50 in, $7.50 out per million tokens, thinking billed as output; third-party listings, not Google's own page), assuming about 2,000 tokens in and 2,000 out per call |
 | Hosting | FairBid | About US$10 a month for the Cloud SQL database, charged even when idle. Cloud Run scales to zero and stays inside the free tier at demo traffic |
 
 Duty, import VAT and the customs broker (EUR 340 on the demo tender) are the buyer's border costs, paid at the border, not through FairBid. They still count when bids are compared.

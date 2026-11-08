@@ -36,7 +36,7 @@ SQL_CONNECTION="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 echo "== Enabling APIs =="
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com \
   secretmanager.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
-  sqladmin.googleapis.com
+  sqladmin.googleapis.com aiplatform.googleapis.com
 
 echo "== Image repository =="
 gcloud artifacts repositories describe fairbid --location="$REGION" >/dev/null 2>&1 ||
@@ -53,8 +53,11 @@ for role in roles/run.admin roles/artifactregistry.writer roles/cloudsql.client;
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOY_SA}" --role="$role" --condition=None --quiet >/dev/null
 done
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${RUN_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null
+# The service reaches Cloud SQL, and Gemini on Vertex AI as itself: no AI key exists.
+for role in roles/cloudsql.client roles/aiplatform.user; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${RUN_SA}" --role="$role" --condition=None --quiet >/dev/null
+done
 gcloud iam service-accounts add-iam-policy-binding "$RUN_SA" \
   --member="serviceAccount:${DEPLOY_SA}" --role=roles/iam.serviceAccountUser --quiet >/dev/null
 
@@ -95,9 +98,7 @@ if ! gcloud secrets describe fairbid-mcp-seller-keys >/dev/null 2>&1; then
   KEYS=""; for s in a b c d; do KEYS="${KEYS},seller-${s}:$(openssl rand -hex 24)"; done
   put_secret fairbid-mcp-seller-keys "${KEYS#,}"
 fi
-# The Anthropic key starts blank (the AI roles use their fixtures). Add a real version
-# in Secret Manager to turn the AI on; a blank one turns it off again.
-gcloud secrets describe fairbid-anthropic-key >/dev/null 2>&1 || put_secret fairbid-anthropic-key " "
+
 # Cloud Run reaches Cloud SQL over a unix socket that --add-cloudsql-instances mounts.
 put_secret fairbid-database-url \
   "postgresql://fairbid:${DB_PASSWORD}@localhost/fairbid?host=/cloudsql/${SQL_CONNECTION}"
