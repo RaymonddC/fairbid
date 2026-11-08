@@ -53,6 +53,14 @@ Everything stays inside Google Cloud. Every resource is named `fairbid-…`, inc
 
 The service already runs on Google Cloud, so the roles call Gemini through Vertex AI as the service's own account: no API key to create, store or leak, and the cost sits on the same bill. Gemini 3.8 Flash is the default because, in a test on 8 Nov, it gave the right customs code for cotton napkins (6302.51) where 2.5 Flash did not. 2.5 Flash stays as a one-time fallback. Every role still has a scripted fixture, so the flow runs with the AI off.
 
+## The buyer may close bidding early
+
+A buyer can close bidding before the published deadline (R's call, 8 Nov 2026). The risk is a buyer closing right after a favoured seller bids; prices are sealed, so the buyer cannot see who is cheapest, but they can see the count. So an early close is never hidden: the event log records the published deadline next to the real closing time and says "closed early", and the hash chain keeps it from being edited away.
+
+## Seller agents can be invited to any tender
+
+"Invite seller agents" works for every buyer, not only the demo accounts (R's call, 8 Nov 2026), so anyone trying FairBid can watch agents bid over MCP on a tender of their own. The four agents are scripted and say so: every bid they seal is signed `agent:<seller>` in the event log and labelled "By a seller agent, over MCP", and only the buyer who owns the tender can invite them.
+
 ## "Good" means the buyer's published criteria
 
 FairBid does not decide what is good. The buyer publishes criteria before bidding opens, and every bid is judged against them with a written reason.

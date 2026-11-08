@@ -27,7 +27,10 @@ function describe(
     case "bid.sealed":
       return { title: "A bid was sealed", detail: `Fingerprint ${String(p.sealedHash ?? "").slice(0, 12)}…, the price stays hidden.` };
     case "tender.closed":
-      return { title: "Bidding closed, every bid opened at once" };
+      return {
+        title: p.early ? "The buyer closed bidding early, every bid opened at once" : "Bidding closed, every bid opened at once",
+        detail: p.early && typeof p.scheduledClose === "string" ? `The published deadline was ${dayTime(p.scheduledClose)}.` : undefined,
+      };
     case "review.flagged":
       return { title: "Two bids flagged as possibly coordinated", detail: "A person decides; a flag never removes a bid." };
     case "clarification.sent":

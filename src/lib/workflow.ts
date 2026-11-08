@@ -75,7 +75,8 @@ export async function closeBidding(tenderId: string, actor: string) {
   if (bids.length === 0) {
     // Nothing to compare or award: the tender ends here, and nobody is charged anything.
     await db.$transaction((tx) => move(tx, tenderId, "OPEN", "CANCELLED"));
-    await appendEvent(tenderId, actor, "tender.cancelled", { reason: "no_bids" });
+    const t = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, select: { closesAt: true } });
+    await appendEvent(tenderId, actor, "tender.cancelled", { reason: "no_bids", scheduledClose: t.closesAt.toISOString(), early: new Date() < t.closesAt });
     return;
   }
   const tender = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { criteria: true } });
@@ -136,6 +137,7 @@ export async function closeBidding(tenderId: string, actor: string) {
   await db.$transaction(async (tx) => {
     await move(tx, tenderId, "OPEN", "CLOSED");
     await tx.tender.update({ where: { id: tenderId }, data: { closesAt: now } });
+    // closesAt now says when bidding really closed; the published deadline is in the event.
     await tx.bid.updateMany({ where: { tenderId }, data: { openedAt: now } });
     await move(tx, tenderId, "CLOSED", "REVIEWING");
 
@@ -177,7 +179,12 @@ export async function closeBidding(tenderId: string, actor: string) {
     if (questions.length) await move(tx, tenderId, "REVIEWING", "CLARIFYING");
   });
 
-  await appendEvent(tenderId, actor, "tender.closed", { bids: bids.map((b) => ({ id: b.id, sealedHash: b.sealedHash })) });
+  // The buyer may close before the published deadline; the record keeps both times.
+  await appendEvent(tenderId, actor, "tender.closed", {
+    bids: bids.map((b) => ({ id: b.id, sealedHash: b.sealedHash })),
+    scheduledClose: tender.closesAt.toISOString(),
+    early: now < tender.closesAt,
+  });
   if (pairs.length) await appendEvent(tenderId, "review", "review.flagged", { pairs: pairs.map((p) => [p.bidId, p.pairedBidId]) });
   if (questions.length) await appendEvent(tenderId, "review", "clarification.sent", { count: questions.length });
   await appendEvent(tenderId, "ai", "review.completed", {
