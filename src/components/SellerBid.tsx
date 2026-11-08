@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { sellerReplyAction, submitBidAction } from "@/app/actions";
+import { classifyHsAction, sellerReplyAction, submitBidAction } from "@/app/actions";
 import { notifyError, notifySuccess } from "./ActionButton";
 import { day, dayTime, moneyFor } from "@/lib/format";
 import type { SellerTenderView } from "@/lib/views";
@@ -10,6 +10,8 @@ import { PhotoPicker, PhotoStrip } from "./Photos";
 import { Button, Panel, Pill } from "./ui";
 
 type Lang = "en" | "id";
+
+type HsState = { code: string; description: string; confidence: number; alternatives: { hsCode: string; description: string }[]; gate: number };
 
 // Sari works in Indonesian; the buyer side stays in English. Only the seller screen switches.
 const copy = {
@@ -118,6 +120,21 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
   const [days, setDays] = useState(mine ? String(mine.leadTimeDays) : "");
   const [notes, setNotes] = useState(mine?.notes ?? "");
   const [hsConfirmed, setHsConfirmed] = useState(!!mine?.hsCode);
+  // The HS classifier's guess. A saved bid keeps its confirmed code; otherwise the demo
+  // product's code until the seller asks the classifier about what they wrote.
+  const [hs, setHs] = useState<HsState>(() =>
+    mine?.hsCode
+      ? { code: mine.hsCode, description: "", confidence: 1, alternatives: [], gate: 0.7 }
+      : { code: "6302.51", description: "table linen of cotton", confidence: 0.92, alternatives: [], gate: 0.7 },
+  );
+  const [classifying, startClassify] = useTransition();
+  const classify = () =>
+    startClassify(async () => {
+      const r = await classifyHsAction(notes.trim() || t.spec.item);
+      if (!r.ok) return notifyError(r.error);
+      setHs({ code: r.guess.hsCode, description: r.guess.description, confidence: r.guess.confidence, alternatives: r.guess.alternatives, gate: r.gate });
+      setHsConfirmed(false);
+    });
   const [photos, setPhotos] = useState<string[]>(mine?.photos ?? []);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -148,7 +165,7 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
         feesCents: fee,
         leadTimeDays: lead,
         notes,
-        hsCode: "6302.51",
+        hsCode: hs.code,
         photos,
       });
       setMessage(r.ok ? { ok: true, text: c.sealedAt(lang === "en" ? "just now" : "barusan") } : { ok: false, text: r.error });
@@ -237,16 +254,43 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                   onChange={(e) => setNotes(e.target.value)}
                   className="min-h-11 rounded-lg border border-line-strong bg-surface px-3 outline-none focus:border-dye focus:ring-2 focus:ring-dye/15"
                 />
-                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-canvas p-3 text-sm">
-                  <span>
-                    {c.hsCode} <strong>6302.51</strong>, table linen of cotton
-                  </span>
-                  <Pill tone={hsConfirmed ? "ok" : "warn"}>{hsConfirmed ? c.confirmed : lang === "en" ? "92% sure" : "92% yakin"}</Pill>
-                  {!hsConfirmed && (
-                    <button type="button" onClick={() => setHsConfirmed(true)} className="ml-auto min-h-11 px-1 font-medium text-dye underline underline-offset-4">
-                      {c.right}
+                <div className="grid gap-2 rounded-lg bg-canvas p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>
+                      {c.hsCode} <strong className="num">{hs.code}</strong>
+                      {hs.description && `, ${hs.description.charAt(0).toLowerCase()}${hs.description.slice(1)}`}
+                    </span>
+                    <Pill tone={hsConfirmed ? "ok" : hs.confidence < hs.gate ? "flag" : "warn"}>
+                      {hsConfirmed
+                        ? c.confirmed
+                        : hs.confidence < hs.gate
+                          ? lang === "en" ? "Unsure: pick the code" : "Kurang yakin: pilih kodenya"
+                          : `${Math.round(hs.confidence * 100)}% ${lang === "en" ? "sure" : "yakin"}`}
+                    </Pill>
+                    {!hsConfirmed && (
+                      <button type="button" onClick={() => setHsConfirmed(true)} className="ml-auto min-h-11 px-1 font-medium text-dye underline underline-offset-4">
+                        {c.right}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={classify} disabled={classifying} className="min-h-9 rounded-md px-1 text-xs font-medium text-dye underline underline-offset-4 disabled:opacity-60">
+                      {classifying ? (lang === "en" ? "Checking…" : "Memeriksa…") : lang === "en" ? "Check the code for what I wrote" : "Periksa kode untuk produk saya"}
                     </button>
-                  )}
+                    {hs.alternatives.map((a) => (
+                      <button
+                        key={a.hsCode}
+                        type="button"
+                        onClick={() => {
+                          setHs((prev) => ({ ...prev, code: a.hsCode, description: a.description, alternatives: [{ hsCode: prev.code, description: prev.description }, ...prev.alternatives.filter((x) => x.hsCode !== a.hsCode)] }));
+                          setHsConfirmed(true);
+                        }}
+                        className="min-h-9 rounded-md border border-line-strong bg-surface px-2 text-xs"
+                      >
+                        <span className="num font-medium">{a.hsCode}</span> {a.description}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

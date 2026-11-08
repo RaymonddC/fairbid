@@ -9,8 +9,10 @@ import { db } from "./db";
 import { holdCents, landedCost } from "./landed";
 import { log } from "./log";
 import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError, type PayPalClient } from "./paypal/client";
-import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED } from "./review-fixture";
+import { explainPair, reviewProposals, scoreBlind } from "./ai/roles";
+import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED, type FixtureQuestion } from "./review-fixture";
 import {
+  bidLetter,
   completenessScore,
   costScore,
   criterionKind,
@@ -60,9 +62,12 @@ const lineOf = (lines: { kind: string; amountCents: number }[], kind: string) =>
  * (questions to sellers, collusion check). */
 export async function closeBidding(tenderId: string, actor: string) {
   if ((await statusOf(tenderId)) !== "OPEN") throw new StepError("Bidding is already closed.");
-  const bids = await db.bid.findMany({ where: { tenderId }, include: { lines: true } });
-  const { currency } = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, select: { currency: true } });
+  // Same order as the screens, so the letters the AI uses match the letters people see.
+  const bids = await db.bid.findMany({ where: { tenderId }, include: { lines: true }, orderBy: [{ submittedAt: "asc" }, { sellerId: "asc" }] });
+  const tender = await db.tender.findUniqueOrThrow({ where: { id: tenderId }, include: { criteria: true } });
+  const { currency } = tender;
   const now = new Date();
+  const letterOf = new Map(bids.map((b, i) => [b.id, bidLetter(i)]));
 
   const pairs = findCoordinatedPairs(
     bids.map((b) => ({
@@ -75,7 +80,41 @@ export async function closeBidding(tenderId: string, actor: string) {
     })),
     currency,
   );
-  const questions = tenderId === DEMO_TENDER_ID ? DEMO_QUESTIONS : [];
+
+  // AI review, before the transaction so no database lock waits on the model.
+  // The demo tender keeps its scripted questions: its seeded replies answer them.
+  const sellerOfLetter = new Map(bids.map((b) => [letterOf.get(b.id)!, b.sellerId]));
+  const [review, reasons] = await Promise.all([
+    tenderId === DEMO_TENDER_ID
+      ? Promise.resolve({ value: DEMO_QUESTIONS, source: "fixture" as const })
+      : reviewProposals(
+          {
+            title: tender.title,
+            needText: tender.needText,
+            deliveryDays: Number((tender.spec as { deliveryDays?: number })?.deliveryDays ?? 28),
+            criteria: tender.criteria.map((c) => ({ name: c.name, weightPct: c.weightPct, rubric: c.rubric })),
+            bids: bids.map((b) => ({
+              letter: letterOf.get(b.id)!,
+              notes: b.notes,
+              hsCode: b.hsCode,
+              leadTimeDays: b.leadTimeDays,
+              photoCount: Array.isArray(b.photos) ? b.photos.length : 0,
+            })),
+          },
+          () => [],
+        ).then((r) => ({
+          source: r.source,
+          value: r.value.map((q) => ({ topic: q.topic, question: q.question, sentTo: q.bids.map((l) => sellerOfLetter.get(l)!), replies: [] })),
+        })),
+    Promise.all(
+      pairs.map((p) => {
+        const a = bids.find((b) => b.id === p.bidId)!;
+        const b = bids.find((x) => x.id === p.pairedBidId)!;
+        return explainPair({ letters: [letterOf.get(a.id)!, letterOf.get(b.id)!], evidence: p.evidence, notes: [a.notes, b.notes] });
+      }),
+    ),
+  ]);
+  const questions: FixtureQuestion[] = review.value;
   const bidOf = (sellerId: string) => bids.find((b) => b.sellerId === sellerId);
   // The scripted review ran two hours before the demo close, so its seeded replies are already in the past.
   const asked = new Date(now.getTime() - 2 * 60 * 60_000);
@@ -86,7 +125,7 @@ export async function closeBidding(tenderId: string, actor: string) {
     await tx.bid.updateMany({ where: { tenderId }, data: { openedAt: now } });
     await move(tx, tenderId, "CLOSED", "REVIEWING");
 
-    for (const p of pairs) {
+    for (const [i, p] of pairs.entries()) {
       await tx.flag.create({
         data: {
           bidId: p.bidId,
@@ -94,7 +133,7 @@ export async function closeBidding(tenderId: string, actor: string) {
           kind: "price_and_text",
           similarity: p.similarity,
           evidence: p.evidence,
-          reason: "These two bids look coordinated. A person should look before awarding.",
+          reason: reasons[i].value,
         },
       });
     }
@@ -127,6 +166,10 @@ export async function closeBidding(tenderId: string, actor: string) {
   await appendEvent(tenderId, actor, "tender.closed", { bids: bids.map((b) => ({ id: b.id, sealedHash: b.sealedHash })) });
   if (pairs.length) await appendEvent(tenderId, "review", "review.flagged", { pairs: pairs.map((p) => [p.bidId, p.pairedBidId]) });
   if (questions.length) await appendEvent(tenderId, "review", "clarification.sent", { count: questions.length });
+  await appendEvent(tenderId, "ai", "review.completed", {
+    questions: { count: questions.length, source: review.source },
+    flagReasons: reasons.map((r) => r.source),
+  });
 }
 
 /** The buyer asks sellers something. Only after bidding closes (so no seller gets an early
@@ -197,6 +240,34 @@ export async function scoreTender(tenderId: string, actor: string) {
   }
   const best = Math.min(...priced.map((p) => p.delivered));
 
+  // The criteria code cannot score are judged by the blind scorer, one anonymous bid per
+  // call, in parallel and before the transaction. Each falls back to its fixture.
+  const judged = t.criteria.filter((c) => !["cost", "lead_time", "completeness"].includes(criterionKind(c.name)));
+  const clarifications = judged.length ? await db.clarification.findMany({ where: { tenderId }, include: { replies: true } }) : [];
+  const fixtureFor = (sellerId: string) => () =>
+    tenderId === DEMO_TENDER_ID ? (DEMO_REVIEWED_SCORES[sellerId] ?? UNREVIEWED) : UNREVIEWED;
+  const judgedScores = new Map<string, Record<string, { score: number; reason: string }>>();
+  const scoreSources: string[] = [];
+  if (judged.length) {
+    await Promise.all(
+      t.bids.map(async (b) => {
+        const r = await scoreBlind(
+          {
+            tender: { title: t.title, needText: t.needText },
+            criteria: judged.map((c) => ({ name: c.name, rubric: c.rubric })),
+            bid: { notes: b.notes, hsCode: b.hsCode, leadTimeDays: b.leadTimeDays, photos: Array.isArray(b.photos) ? (b.photos as string[]) : [] },
+            clarifications: clarifications
+              .filter((c) => Array.isArray(c.sentTo) && (c.sentTo as string[]).includes(b.sellerId))
+              .map((c) => ({ question: c.question, reply: c.replies.find((r) => r.bidId === b.id)?.body ?? null })),
+          },
+          fixtureFor(b.sellerId),
+        );
+        judgedScores.set(b.id, r.value);
+        scoreSources.push(r.source);
+      }),
+    );
+  }
+
   await db.$transaction(async (tx) => {
     await move(tx, tenderId, status, "PRICED");
     for (const p of priced) {
@@ -224,9 +295,7 @@ export async function scoreTender(tenderId: string, actor: string) {
                     notes: p.bid.notes,
                     photoCount: Array.isArray(p.bid.photos) ? p.bid.photos.length : 0,
                   })
-                : tenderId === DEMO_TENDER_ID
-                  ? (DEMO_REVIEWED_SCORES[p.bid.sellerId] ?? UNREVIEWED)
-                  : UNREVIEWED;
+                : (judgedScores.get(p.bid.id)?.[c.name] ?? fixtureFor(p.bid.sellerId)());
         await tx.score.upsert({
           where: { bidId_criterionId: { bidId: p.bid.id, criterionId: c.id } },
           create: { bidId: p.bid.id, criterionId: c.id, score: s.score, reason: s.reason },
@@ -236,7 +305,10 @@ export async function scoreTender(tenderId: string, actor: string) {
     }
     await move(tx, tenderId, "PRICED", "SCORED");
   });
-  await appendEvent(tenderId, actor, "tender.scored", { bids: priced.length });
+  await appendEvent(tenderId, actor, "tender.scored", {
+    bids: priced.length,
+    judgedBy: judged.length ? (scoreSources.every((s) => s === "claude") ? "claude" : scoreSources.some((s) => s === "claude") ? "mixed" : "fixture") : "code",
+  });
 }
 
 // ── Award, hold and pay ──────────────────────────────────────────────────────

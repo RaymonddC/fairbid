@@ -47,5 +47,5 @@ export const DEMO_REVIEWED_SCORES: Record<string, { score: number; reason: strin
   "seller-d": { score: 95, reason: "Hand-stamped by six named artisans; the photos show wax-resist marks." },
 };
 
-/** Any tender other than the demo one, until the AI roles exist. */
-export const UNREVIEWED = { score: 70, reason: "Scripted score: the AI review is not built yet." };
+/** Any tender other than the demo one when no AI review ran (no API key, or the call failed). */
+export const UNREVIEWED = { score: 70, reason: "Scripted score: no AI review ran for this bid." };

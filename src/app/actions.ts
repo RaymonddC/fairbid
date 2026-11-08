@@ -7,8 +7,11 @@ import { refresh } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
+import { classifyHs, HS_CONFIDENCE_GATE, HS_FIXTURE, writeTender } from "@/lib/ai/roles";
 import { db } from "@/lib/db";
+import { draftFrom } from "@/lib/draft";
 import { resetDemoTender } from "@/lib/demo-reset";
+import { createLimiter } from "@/lib/rate-limit";
 import { DEMO_QUESTIONS, SIMULATED_REPLY, SIMULATED_REPLY_GENERIC } from "@/lib/review-fixture";
 import { getUser } from "@/lib/session";
 import {
@@ -110,6 +113,34 @@ export async function submitBidAction(tenderId: string, input: BidInput) {
 
 export async function publishTenderAction(input: TenderInput) {
   return run(async () => ({ tenderId: await publishTender(input, (await as("buyer")).id) }));
+}
+
+// Each AI call costs money, so a person gets a fair number per hour, per instance.
+const draftsPerUser = createLimiter(20, 60 * 60_000);
+const hsGuessesPerUser = createLimiter(40, 60 * 60_000);
+
+/** The tender writer: plain words in, a draft the buyer edits before publishing. */
+export async function draftTenderAction(need: string) {
+  return run(async () => {
+    const user = await as("buyer");
+    const text = need.trim().slice(0, 2000);
+    if (text.length < 20) throw new StepError("Write at least a sentence: what, how many, by when and roughly what budget.");
+    if (!draftsPerUser.hit(user.id)) return { draft: draftFrom(text), source: "fixture" as const };
+    const r = await writeTender(text);
+    return { draft: r.value, source: r.source };
+  });
+}
+
+/** The HS classifier: a seller's product words in, a customs code they confirm or change. */
+export async function classifyHsAction(product: string) {
+  return run(async () => {
+    const user = await as("seller");
+    const text = product.trim().slice(0, 500);
+    if (text.length < 3) throw new StepError("Describe the product in a few words.");
+    if (!hsGuessesPerUser.hit(user.id)) return { guess: HS_FIXTURE, source: "fixture" as const, gate: HS_CONFIDENCE_GATE };
+    const r = await classifyHs(text);
+    return { guess: r.value, source: r.source, gate: HS_CONFIDENCE_GATE };
+  });
 }
 
 /** Rebuilds the demo tender for the next run. Leaves other tenders alone. */

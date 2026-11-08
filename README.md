@@ -13,13 +13,15 @@ Working now:
 - Buyer dashboard with cash flow; seller quest board
 - Buyer steps: sealed bids, close, clarification inbox (in-app), delivered-cost compare with a blind score grid, award with the PayPal button, milestone payments
 - Seller: sealed bid form with photos and a delivered-cost preview, replies to clarifications, payments received
-- Post a tender (scripted draft), Reset demo
+- Five AI roles on Claude (`src/lib/ai/`): the tender writer drafts a tender from plain words, the HS classifier suggests the customs code, the proposal reviewer writes questions to sellers after close, the blind scorer judges the criteria code cannot, and the collusion reasoner explains why code paired two bids. Prompts are in `src/lib/ai/prompts.ts`. Without `ANTHROPIC_API_KEY`, or when a call fails, each role answers from its scripted fixture, so the flow always runs
+- Post a tender, Reset demo
+- Money steps are safe to repeat: PayPal calls time out and retry with their idempotency key, a lost hold is read back from the order, a double click pays once, and repeated webhooks are ignored
 - Postgres schema, migration, and a repeat-safe demo seed
 - Landed-cost engine, checked against the demo tender's published figures
 - Tender state machine and hash-chained event log
 - PayPal client with the seller as payee, and a webhook route
 
-Not built yet: the AI roles (questions and the handmade score come from `src/lib/review-fixture.ts`), WhatsApp and Telegram, seller agents over MCP. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
+Not built yet: seller agents over MCP, WhatsApp and Telegram. The demo tender keeps its scripted questions, because its seeded replies answer them; every other tender gets the reviewer's own questions. The AI roles have only run on their fixtures so far: no live Claude call has been tested yet. Verified in the sandbox on 8 Nov 2026 through this code: a German personal account approved a EUR 2,540 hold with Sari as payee, then two partial captures (762, 1,016) and a final capture of 700 released the remaining 62.
 
 ## Guardrails, and where they live in code
 
@@ -47,7 +49,7 @@ For the demo tender: a EUR 2,540 hold paid out in three milestones of 762, 1,016
 |---|---|---|
 | PayPal fee on what the seller receives | The seller, deducted by PayPal | EUR 110: 4.40% plus EUR 0.35 per capture, the rate for an Indonesian seller paid from abroad ([PayPal Indonesia fees](https://www.paypal.com/id/webapps/mpp/merchant-fees), read 8 Nov 2026). Converting the euros to rupiah adds 3.0% |
 | FairBid's fee | Nobody | EUR 0. Platform fees need PayPal Multiparty, which the sandbox does not offer with the seller as payee |
-| Claude, five AI roles | FairBid | Estimate, until the roles are built and measured: about US$0.30 per tender on Claude Opus 5.5 ($4 in, $20 out per million tokens), assuming about 6,000 tokens in and 1,500 out per role |
+| Claude, five AI roles | FairBid | Estimate, until real runs are measured: about US$0.30 per tender on Claude Opus 5.5 ($4 in, $20 out per million tokens), assuming about 6,000 tokens in and 1,500 out per role |
 | Hosting | FairBid | About US$10 a month for the Cloud SQL database, charged even when idle. Cloud Run scales to zero and stays inside the free tier at demo traffic |
 
 Duty, import VAT and the customs broker (EUR 340 on the demo tender) are the buyer's border costs, paid at the border, not through FairBid. They still count when bids are compared.

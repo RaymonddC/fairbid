@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { publishTenderAction } from "@/app/actions";
+import { draftTenderAction, publishTenderAction } from "@/app/actions";
+import { draftFrom, type Draft } from "@/lib/draft";
 import { DESTINATIONS, money } from "@/lib/format";
 import { notifyError, notifySuccess } from "./ActionButton";
 import { PhotoPicker, PhotoStrip } from "./Photos";
@@ -20,40 +21,6 @@ const CRITERIA = [
   { name: "Lead time", weightPct: 20, rubric: "Inside the delivery window, earlier scores higher." },
   { name: "Completeness", weightPct: 15, rubric: "All fields filled and customs code confirmed." },
 ];
-
-type Draft = { title: string; item: string; quantity: number; budget: number; deliveryDays: number; destination: "DE" | "US" };
-
-/** "3,000", "3.000", "3k", "2.5k" become 3000 or 2500. */
-function amount(raw: string, suffix?: string) {
-  const n = Number(raw.replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
-  return /k/i.test(suffix ?? "") ? n * 1000 : n;
-}
-
-/** Scripted stand-in for the AI drafting role: a first guess at quantity, item, budget and
- * weeks from plain words. The buyer checks and edits every field before publishing. */
-function draftFrom(need: string): Draft {
-  const qty = need.match(/\b(\d{1,6})\s+(?!euros?\b|eur\b|weeks?\b|days?\b)([a-z][a-z\s-]{2,60}?)(?=\s+for\b|\s+to\b|[.,]|$)/i);
-  const quantity = Number(qty?.[1] ?? 1);
-  const item = (qty?.[2] ?? "items").trim();
-  // A budget is a number next to "budget", a currency sign, or a currency word.
-  const b =
-    need.match(/budget[^\d€$]{0,25}[€$]?\s?(\d[\d.,]*)\s*(k)?/i) ??
-    need.match(/[€$]\s?(\d[\d.,]*)\s*(k)?/) ??
-    need.match(/(\d[\d.,]*)\s*(k)?\s*(?:euros?|eur|dollars?|usd)\b/i);
-  const usd = /\$|\busd\b|dollars?/i.test(need);
-  const budget = b ? amount(b[1], b[2]) : 1000;
-  const weeks = Number(need.match(/(\d+)\s*weeks?/i)?.[1] ?? 4);
-  return {
-    title: `${quantity} ${item}`,
-    item: item.charAt(0).toUpperCase() + item.slice(1),
-    quantity,
-    budget: Math.round(budget),
-    // Dollars or a US city in the request point to a US delivery; otherwise Germany.
-    destination: usd || /\b(new york|usa|united states|us)\b/i.test(need) ? "US" : "DE",
-    // A PayPal hold lasts 29 days, so the window is capped at 28.
-    deliveryDays: Math.min(28, weeks * 7),
-  };
-}
 
 /** What is wrong with the draft, in the buyer's words, or null. */
 function problem(d: Draft): string | null {
@@ -75,6 +42,7 @@ export function PostTender() {
   const total = weights.reduce((a, b) => a + b, 0);
   const tooShort = need.trim().length < 20;
   const [d, setD] = useState<Draft>(() => draftFrom(EXAMPLE));
+  const [draftNote, setDraftNote] = useState<string | null>(null);
   const issue = problem(d);
   const dest = DESTINATIONS.find((x) => x.country === d.destination) ?? DESTINATIONS[0];
   const edit = (patch: Partial<Draft>) => setD((prev) => ({ ...prev, ...patch }));
@@ -130,10 +98,20 @@ export function PostTender() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant={phase === "review" ? "secondary" : "primary"}
-            onClick={() => {
+            onClick={async () => {
               setPhase("drafting");
-              setD(draftFrom(need));
-              setTimeout(() => setPhase("review"), 900);
+              setDraftNote(null);
+              // The tender writer (Claude, or its scripted guess without a key). A failed
+              // call still leaves a draft to edit, never an empty form.
+              const r = await draftTenderAction(need);
+              if (r.ok) {
+                setD(r.draft);
+                setDraftNote(r.source === "claude" ? null : "Drafted by the scripted guess, not the AI. Check every field.");
+              } else {
+                setD(draftFrom(need));
+                notifyError(r.error);
+              }
+              setPhase("review");
             }}
             loading={phase === "drafting"}
             disabled={tooShort}
@@ -164,10 +142,22 @@ export function PostTender() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="grid gap-1">
                 <p className="text-sm text-muted">Check the draft and fix anything the AI read wrong.</p>
+                {draftNote && <p className="text-xs text-warn">{draftNote}</p>}
                 <p className="text-xs text-faint">Delivered at place. Import duty and any import VAT are paid by you. Bids close in 7 days.</p>
               </div>
               <Pill>Draft</Pill>
             </div>
+
+            {d.questions.length > 0 && (
+              <div className="grid gap-1.5 rounded-lg bg-sun-soft p-3 text-sm">
+                <p className="font-medium">Settle these before you publish</p>
+                <ul className="grid list-disc gap-1 pl-5 text-muted">
+                  {d.questions.map((q) => (
+                    <li key={q}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <DraftField label="Deliver to" hint={`PayPal holds the money in ${dest.currency}`} className="sm:col-span-2">
