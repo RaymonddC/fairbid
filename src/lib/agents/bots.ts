@@ -139,14 +139,18 @@ export async function runBot(mcpUrl: string, key: string, p: Persona, only?: str
   return steps;
 }
 
-/** Runs every bot that has a key, in parallel. */
+/** Runs every bot that has a key, one after another in a fixed order. Bid letters follow
+ * submission order, so the exporter is always A, the traders B and C, and Sari D, as on the demo tender. */
 export async function runBots(mcpUrl: string, keysBySeller: Map<string, string>, only?: string): Promise<BotStep[]> {
-  const runs = PERSONAS.filter((p) => keysBySeller.has(p.sellerId)).map((p) =>
-    runBot(mcpUrl, keysBySeller.get(p.sellerId)!, p, only).catch(
-      (e): BotStep[] => [{ seller: p.name, tenderId: only ?? "-", action: "error", detail: (e as Error).message }],
-    ),
-  );
-  return (await Promise.all(runs)).flat();
+  const steps: BotStep[] = [];
+  for (const p of PERSONAS.filter((x) => keysBySeller.has(x.sellerId))) {
+    steps.push(
+      ...(await runBot(mcpUrl, keysBySeller.get(p.sellerId)!, p, only).catch(
+        (e): BotStep[] => [{ seller: p.name, tenderId: only ?? "-", action: "error", detail: (e as Error).message }],
+      )),
+    );
+  }
+  return steps;
 }
 
 /** MCP_SELLER_KEYS ("seller-a:key,...") as sellerId -> key. */
