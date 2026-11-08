@@ -1,0 +1,9 @@
+{
+  "note": "Real PayPal sandbox holds placed through the live app on 8 Nov 2026. readback.ts reads each one back from PayPal.",
+  "cases": [
+    { "authorization": "7A666465816249120", "label": "Demo tender: one hold of €2,540, nothing paid yet" },
+    { "authorization": "2W101654CX197861X", "label": "28-day order: one hold, two partial payments (30% and 40%), final step still open" },
+    { "authorization": "07F795860P717924N", "label": "60-day order, phase 1 of 3: deposit paid in one final payment" },
+    { "authorization": "1MR72702AU0112154", "label": "60-day order, phase 2 of 3: a second hold on the same order, paid in one final payment" }
+  ]
+}

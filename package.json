@@ -17,7 +17,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "check:phases": "tsx --env-file=.env scripts/phases-e2e.ts",
-    "bots": "tsx scripts/seller-bots.ts"
+    "bots": "tsx scripts/seller-bots.ts",
+    "proof:paypal": "tsx --env-file=.env sandbox-tests/readback.ts"
   },
   "dependencies": {
     "@google/genai": "2.31.0",

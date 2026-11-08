@@ -21,9 +21,8 @@ WhatsApp fits the Indonesian seller story. Telegram is free and a judge can try 
 
 ## Still to verify
 
-- Hold renewal: retest due on 10 Nov
+- Hold renewal: retest due on 11 Nov, once PayPal's 3-day honour period on `2W101654CX197861X` has passed
 - Twilio trial terms
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler
 - Real duty rate for the demo product. 12% is a demo assumption
-- The earlier sandbox test scripts still need to be added to `sandbox-tests/`
