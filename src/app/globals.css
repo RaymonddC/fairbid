@@ -195,10 +195,103 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 0.9s linear infinite; }
 
+/* ---------- Sign-in page ---------- */
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The brand side: a fixed night indigo in both themes, with one soft glow. */
+.auth-brand {
+  --auth-night: #141a4d;
+  background: radial-gradient(70% 55% at 15% 0%, rgb(84 104 220 / 0.32), transparent 70%), var(--auth-night);
+  color: #fff;
+}
+
+/* Sized by the window's width and height, so the whole story fits on a short laptop screen. */
+.auth-headline {
+  font-size: clamp(34px, min(4.4vw, 5.6vh), 56px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+}
+
+/* The headline rises line by line from behind its own baseline. */
+.auth-line { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.auth-line-in {
+  display: block;
+  animation: auth-line 760ms var(--ease-out-strong) both;
+  animation-delay: calc(180ms + var(--i, 0) * 90ms);
+}
+@keyframes auth-line { from { transform: translateY(112%); } to { transform: none; } }
+
+/* The winning row lights up last. */
+@keyframes story-win { from { opacity: 0; } to { opacity: 1; } }
+.story-win {
+  background: rgb(255 255 255 / 0.08);
+  box-shadow: inset 0 0 0 1px rgb(227 167 47 / 0.55);
+  animation: story-win 420ms var(--ease-out-strong) 3050ms both;
+}
+
+/* Cards on the indigo side. */
+.auth-glass {
+  background: rgb(30 38 104 / 0.92);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12), 0 18px 40px -22px rgb(0 0 0 / 0.7);
+}
+
+/* Act one: the parcel sets off from Sari to Anna. */
+@keyframes route-line { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.route-line { animation: route-line 900ms var(--ease-drawer) 350ms both; }
+@keyframes route-parcel { from { transform: translateX(0); } to { transform: translateX(100%); } }
+.route-parcel { animation: route-parcel 2600ms cubic-bezier(0.77, 0, 0.175, 1) 450ms both; }
+
+/* Act three: the winner saved money, PayPal holds it, then each step is paid. */
+@keyframes story-pop { from { opacity: 0; transform: translateY(6px) scale(0.92); } to { opacity: 1; transform: none; } }
+.story-saved { animation: story-pop 460ms var(--ease-out-strong) 3100ms both; }
+.story-hold { animation: auth-rise 560ms var(--ease-out-strong) 3350ms both; }
+@keyframes story-step { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.story-step {
+  animation: story-step 420ms var(--ease-out-strong) both;
+  animation-delay: calc(3800ms + var(--i, 0) * 340ms);
+}
+
+/* Page load: one staggered entrance, each piece set by --i. */
+@keyframes auth-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.auth-rise {
+  animation: auth-rise 520ms var(--ease-out-strong) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+/* Switching between sign in and create account. */
+.auth-slide { transition: transform 420ms var(--ease-drawer); }
+.auth-height { transition: height 420ms var(--ease-drawer); }
+.auth-press { transition: transform 140ms var(--ease-out-strong), background-color 150ms ease; }
+.auth-press:active:not(:disabled) { transform: scale(0.98); }
+
+/* The bid story, played once: quotes arrive, then the real costs are added beside them. */
+@keyframes story-bar {
+  0% { clip-path: inset(0 100% 0 0 round 4px); }
+  32%, 52% { clip-path: inset(0 var(--gap) 0 0 round 4px); }
+  100% { clip-path: inset(0 0 0 0 round 4px); }
+}
+.story-bar {
+  animation: story-bar 2400ms cubic-bezier(0.77, 0, 0.175, 1) both;
+  animation-delay: calc(450ms + var(--i, 0) * 60ms);
+}
+@keyframes story-in { 0%, 66% { opacity: 0; } 82%, 100% { opacity: 1; } }
+.story-in { animation: story-in 2700ms linear 450ms both; }
+@keyframes story-end { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.story-end { animation: story-end 420ms var(--ease-out-strong) 3050ms both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
+  .auth-rise, .story-end, .story-hold, .story-saved { animation-name: fade-in; }
+  .auth-line-in { animation-name: fade-in; }
 }

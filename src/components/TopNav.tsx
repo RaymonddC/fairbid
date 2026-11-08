@@ -18,6 +18,8 @@ type Tab = { href: string; label: string; active: (path: string) => boolean };
 export function TopNav({ user }: { user: User | null }) {
   const path = usePathname();
   const seller = user?.role === "seller";
+  // The sign-in pages carry the logo themselves, so it does not show twice.
+  const hidden = path === "/login" || path === "/register";
 
   const tabs: Tab[] = !user
     ? []
@@ -27,6 +29,8 @@ export function TopNav({ user }: { user: User | null }) {
           { href: "/", label: "Tenders", active: (p) => p === "/" || p.startsWith("/tender") },
           { href: "/post", label: "Post a tender", active: (p) => p.startsWith("/post") },
         ];
+
+  if (hidden) return null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/80 backdrop-blur-md backdrop-saturate-150">

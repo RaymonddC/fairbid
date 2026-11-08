@@ -70,8 +70,14 @@ export function AuthPanel({
   }, [mode]);
 
   return (
-    <section className="notice overflow-hidden rounded-2xl" aria-label="Sign in or create an account">
-      <div className="relative grid grid-cols-2 border-b border-line text-sm" role="tablist" aria-label="Account">
+    <section className="overflow-hidden" aria-label="Sign in or create an account">
+      <div className="p-1">
+      <div className="relative grid grid-cols-2 rounded-lg bg-canvas p-1 text-sm ring-1 ring-inset ring-line" role="tablist" aria-label="Account">
+        <span
+          className="auth-slide absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-md bg-surface shadow-[0_1px_2px_rgba(15,18,34,0.12),0_0_0_1px_rgba(15,18,34,0.05)]"
+          style={{ transform: mode === "register" ? "translateX(100%)" : "none" }}
+          aria-hidden="true"
+        />
         {(["login", "register"] as const).map((m) => (
           <button
             key={m}
@@ -81,48 +87,40 @@ export function AuthPanel({
             aria-selected={mode === m}
             aria-controls={`pane-${m}`}
             onClick={() => go(m)}
-            className={`min-h-12 font-medium transition-colors ${mode === m ? "text-ink" : "text-muted hover:text-ink"}`}
+            className={`relative min-h-10 rounded-md font-medium transition-colors duration-200 ${mode === m ? "text-ink" : "text-muted hover:text-ink"}`}
           >
             {m === "login" ? "Sign in" : "Create account"}
           </button>
         ))}
-        <span
-          className="absolute bottom-0 left-0 h-0.5 w-1/2 bg-dye transition-transform duration-500 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none"
-          style={{ transform: mode === "register" ? "translateX(100%)" : "none" }}
-          aria-hidden="true"
-        />
+      </div>
       </div>
 
       <div
-        className="overflow-hidden transition-[height] duration-500 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none"
+        className="auth-height overflow-hidden"
         style={{ height }}
       >
         <div
-          className="flex w-[200%] items-start transition-transform duration-500 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none"
+          className="auth-slide flex w-[200%] items-start"
           style={{ transform: mode === "register" ? "translateX(-50%)" : "none" }}
         >
           <Pane id="login" active={mode === "login"} paneRef={(el) => (panes.current.login = el)}>
-            <h2 className="text-xl">Welcome back</h2>
-            <p className="-mt-2 text-sm text-muted">Sign in to run your tenders or your bids.</p>
-            <LoginFields next={next} demoEmail={demoEmail} />
-            <p className="text-sm text-muted">
-              New to FairBid?{" "}
-              <button type="button" onClick={() => go("register")} className="font-medium text-dye underline underline-offset-4">
-                Create an account
-              </button>
+            <h2 className="text-[28px] leading-tight tracking-[-0.025em]">See it from both sides</h2>
+            <p className="-mt-2 text-sm text-muted">Step in as the buyer or the seller. No password needed.</p>
+            <DemoAccounts accounts={demoAccounts} next={next} />
+            <div className="flex items-center gap-3 text-xs text-faint">
+              <span className="h-px flex-1 bg-line" aria-hidden="true" />
+              Or sign in with email
+              <span className="h-px flex-1 bg-line" aria-hidden="true" />
+            </div>
+            <LoginFields next={next} />
+            <p className="text-xs text-muted">
+              Demo login: <span className="ref text-ink">{demoEmail}</span> / <span className="ref text-ink">{demoPassword}</span>
             </p>
-            <DemoAccounts accounts={demoAccounts} next={next} demoEmail={demoEmail} demoPassword={demoPassword} />
           </Pane>
           <Pane id="register" active={mode === "register"} paneRef={(el) => (panes.current.register = el)}>
-            <h2 className="text-xl">Create your account</h2>
+            <h2 className="text-[28px] leading-tight tracking-[-0.025em]">Create your account</h2>
             <p className="-mt-2 text-sm text-muted">Buy through sealed tenders, or sell to buyers abroad. Sandbox money only.</p>
             <RegisterFields />
-            <p className="text-sm text-muted">
-              Already have an account?{" "}
-              <button type="button" onClick={() => go("login")} className="font-medium text-dye underline underline-offset-4">
-                Sign in
-              </button>
-            </p>
           </Pane>
         </div>
       </div>
@@ -138,7 +136,7 @@ function Pane({ id, active, paneRef, children }: { id: Mode; active: boolean; pa
       role="tabpanel"
       aria-labelledby={`tab-${id}`}
       inert={!active}
-      className={`grid w-1/2 gap-5 p-6 transition-opacity duration-300 sm:p-8 ${active ? "opacity-100" : "opacity-0"}`}
+      className={`grid w-1/2 content-start gap-5 p-1 pt-7 transition-opacity duration-200 ${active ? "opacity-100" : "opacity-0"}`}
     >
       {children}
     </div>
@@ -146,9 +144,9 @@ function Pane({ id, active, paneRef, children }: { id: Mode; active: boolean; pa
 }
 
 const field =
-  "min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm outline-none placeholder:text-faint focus:border-dye focus:ring-2 focus:ring-dye/15 aria-[invalid=true]:border-flag";
+  "min-h-12 w-full rounded-lg border border-line-strong bg-surface px-3.5 text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-faint focus:border-dye focus:ring-2 focus:ring-dye/15 aria-[invalid=true]:border-flag";
 
-function LoginFields({ next, demoEmail }: { next: string; demoEmail: string }) {
+function LoginFields({ next }: { next: string }) {
   const [state, action, pending] = useActionState<PasswordSignInState, FormData>(passwordSignInAction, { error: null, email: "" });
   const invalid = !!state.error;
   return (
@@ -161,7 +159,7 @@ function LoginFields({ next, demoEmail }: { next: string; demoEmail: string }) {
           type="email"
           autoComplete="email"
           defaultValue={state.email}
-          placeholder={demoEmail}
+          placeholder="you@company.com"
           aria-invalid={invalid}
           aria-describedby={invalid ? "login-error" : undefined}
           className={field}
@@ -169,7 +167,8 @@ function LoginFields({ next, demoEmail }: { next: string; demoEmail: string }) {
       </Field>
       <PasswordField id="login-password" autoComplete="current-password" invalid={invalid} describedBy={invalid ? "login-error" : undefined} />
       {state.error && <ErrorNote id="login-error">{state.error}</ErrorNote>}
-      <Submit pending={pending} busy="Signing in…">
+      {/* Quiet on purpose: the demo accounts above are the screen's main way in. */}
+      <Submit pending={pending} busy="Signing in…" quiet>
         Sign in
       </Submit>
     </form>
@@ -254,35 +253,35 @@ function RegisterFields() {
   );
 }
 
-function DemoAccounts({ accounts, next, demoEmail, demoPassword }: { accounts: DemoAccount[]; next: string; demoEmail: string; demoPassword: string }) {
+/** What each demo account lets you do, in that person's words. */
+const DEMO_ACTION: Record<string, string> = {
+  "buyer-anna": "Compare bids and pay",
+  "seller-sari": "Bid on a tender",
+};
+
+function DemoAccounts({ accounts, next }: { accounts: DemoAccount[]; next: string }) {
   return (
-    <div className="grid gap-3 border-t border-line pt-5">
-      <div className="flex items-center gap-3 text-xs text-faint">
-        <span className="h-px flex-1 bg-line" aria-hidden="true" />
-        Or try a demo account, no password
-        <span className="h-px flex-1 bg-line" aria-hidden="true" />
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {accounts.map((a) => (
-          <form key={a.id} action={signInAction}>
-            <input type="hidden" name="userId" value={a.id} />
-            <input type="hidden" name="next" value={next} />
-            <button
-              type="submit"
-              className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-line-strong bg-surface px-3 text-left transition-colors hover:border-dye hover:bg-dye-soft/40"
-            >
+    <div className="grid gap-2 sm:grid-cols-2">
+      {accounts.map((a) => (
+        <form key={a.id} action={signInAction} className="grid">
+          <input type="hidden" name="userId" value={a.id} />
+          <input type="hidden" name="next" value={next} />
+          <button
+            type="submit"
+            className="auth-press grid w-full content-between gap-2.5 rounded-xl border border-line-strong bg-surface p-3.5 text-left transition-colors hover:border-dye hover:bg-dye-soft/40"
+          >
+            <span className="flex items-center gap-2.5">
               <Avatar id={a.id} size={36} />
-              <span className="grid min-w-0 leading-tight">
+              <span className="grid leading-tight">
                 <span className="text-sm font-medium">{a.name}</span>
-                <span className="truncate text-xs capitalize text-muted">{a.role}, {a.detail}</span>
+                <span className="text-xs capitalize text-muted">{a.role}</span>
               </span>
-            </button>
-          </form>
-        ))}
-      </div>
-      <p className="text-xs text-muted">
-        Judges can also sign in with <span className="ref text-ink">{demoEmail}</span> and <span className="ref text-ink">{demoPassword}</span>.
-      </p>
+            </span>
+            <span className="text-xs leading-snug text-muted">{a.detail}</span>
+            <span className="text-sm font-medium text-dye">{DEMO_ACTION[a.id] ?? `Continue as ${a.name}`}</span>
+          </button>
+        </form>
+      ))}
     </div>
   );
 }
@@ -337,12 +336,14 @@ function ErrorNote({ id, children }: { id: string; children: ReactNode }) {
   );
 }
 
-function Submit({ pending, busy, children }: { pending: boolean; busy: string; children: ReactNode }) {
+function Submit({ pending, busy, quiet = false, children }: { pending: boolean; busy: string; quiet?: boolean; children: ReactNode }) {
   return (
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-dye px-4 text-sm font-medium text-canvas transition-colors hover:bg-dye-hover disabled:opacity-60"
+      className={`auth-press inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium disabled:opacity-60 ${
+        quiet ? "border border-line-strong bg-surface text-ink hover:bg-canvas" : "bg-dye text-canvas hover:bg-dye-hover"
+      }`}
     >
       {pending && <Spinner size={15} label={busy} />}
       {pending ? busy : children}
