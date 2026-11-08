@@ -172,7 +172,7 @@ function Bubble({ side, who, at, children }: { side: "in" | "out"; who: string; 
     <div className={`flex ${side === "out" ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${side === "out" ? "rounded-br-md bg-dye text-canvas" : "rounded-bl-md bg-canvas text-ink"}`}>
         <div className={`mb-0.5 text-xs font-medium ${side === "out" ? "text-canvas/75" : "text-muted"}`}>{who}</div>
-        <p>{children}</p>
+        <p className="whitespace-pre-wrap">{children}</p>
         <div className={`mt-1 text-right text-[11px] ${side === "out" ? "text-canvas/65" : "text-faint"}`}>{at}</div>
       </div>
     </div>

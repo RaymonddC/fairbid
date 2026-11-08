@@ -402,7 +402,7 @@ function Question({ q, c }: { q: SellerTenderView["questions"][number]; c: (type
         {q.question}
       </p>
       {q.myReply ? (
-        <p className="rounded-lg bg-ok-soft p-3 text-sm">{q.myReply}</p>
+        <p className="whitespace-pre-wrap rounded-lg bg-ok-soft p-3 text-sm">{q.myReply}</p>
       ) : (
         <form
           className="grid gap-2"
