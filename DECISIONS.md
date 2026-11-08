@@ -72,6 +72,10 @@ A buyer can close bidding before the published deadline (R's call, 8 Nov 2026). 
 
 "Invite seller agents" adds four scripted sellers to a tender. That shows MCP agents working, but on a real buyer's tender it would put fake bids next to real ones. So only the shared demo accounts can invite them, on tenders they own (R's call, 8 Nov 2026); the server refuses anyone else (`inviteAgentsAction`), and the button is not shown to them. Every bid an agent seals is signed `agent:<seller>` in the event log. A real seller's own agent can still bid on any open tender through `/api/mcp` with that seller's key.
 
+## Sellers make their own agent keys
+
+"Any seller's AI can bid" was only true for the four demo sellers, whose keys sit in a secret. Now a seller makes a key on their dashboard for their own agent (R's call, 8 Nov 2026). The key is shown once and only its sha256 is stored, so a database leak gives nobody a working key; a seller can hold five and revoke any at once. The shared demo seller is used by every visitor, so there the oldest key gives way instead of the limit blocking the next person. The public `/agents` page documents the server, the tools, the rules agents cannot bypass, and setup for common clients. Agents still never move money: only the buyer approves a hold and confirms a payment.
+
 ## "Good" means the buyer's published criteria
 
 FairBid does not decide what is good. The buyer publishes criteria before bidding opens, and every bid is judged against them with a written reason.

@@ -105,6 +105,7 @@ model Seller {
   bids         Bid[]
   channelLinks ChannelLink[]
   linkCodes    ChannelLinkCode[]
+  agentKeys    AgentKey[]
 }
 
 model Bid {
@@ -208,6 +209,24 @@ model ChannelLinkCode {
   seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@unique([sellerId, kind])
+}
+
+// A key a seller's own AI agent sends to /api/mcp. Only a sha256 of the key is stored;
+// the seller sees the key once, when it is made. Revoked keys stay, so the record shows
+// which agent acted when.
+model AgentKey {
+  id         String    @id @default(uuid())
+  sellerId   String
+  keyHash    String    @unique
+  prefix     String
+  label      String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
 }
 
 // A question as it was sent to a chat, so a reply to that message finds its question.

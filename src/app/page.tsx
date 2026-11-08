@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { CashflowChart } from "@/components/CashflowChart";
 import { QuestBoard, type Quest, type QuestState } from "@/components/QuestBoard";
+import { AgentKeys } from "@/components/AgentKeys";
 import { ChannelLinker } from "@/components/ChannelLinker";
 import { TransactionsGrid } from "@/components/TransactionsGrid";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,6 +14,8 @@ import { availableChannels, linksOf } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { maskAddress } from "@/lib/channels/types";
 import { day, money } from "@/lib/format";
+import { listAgentKeys } from "@/lib/mcp/agent-keys";
+import { publicBaseUrl } from "@/lib/public-url";
 import { getUser } from "@/lib/session";
 import { getTenderView } from "@/lib/tender-data";
 import { atLeast, rankBids, type TenderSummary } from "@/lib/views";
@@ -243,9 +246,11 @@ function sumText(parts: [number, string][]): string {
 }
 
 async function SellerHome({ sellerId, name }: { sellerId: string; name: string }) {
-  const [cf, links, tenders] = await Promise.all([
+  const [cf, links, agentKeys, base, tenders] = await Promise.all([
     sellerCashflow(sellerId),
     linksOf(sellerId),
+    listAgentKeys(sellerId),
+    publicBaseUrl(),
     db.tender.findMany({
       // Every published tender: open ones to bid on, and closed ones this seller bid on.
       where: { OR: [{ status: "OPEN" }, { bids: { some: { sellerId } } }] },
@@ -285,6 +290,7 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
             linked: links.find((l) => l.kind === c.kind) ? maskAddress(c.kind, links.find((l) => l.kind === c.kind)!.address) : null,
           }))}
         />
+        <AgentKeys keys={agentKeys} mcpUrl={`${base}/api/mcp`} />
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <QuestBoard quests={quests} />
           <UpcomingPanel items={cf.upcoming} buyer={false} />

@@ -10,6 +10,7 @@ import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
 import { classifyHs, HS_CONFIDENCE_GATE, HS_FIXTURE, writeTender } from "@/lib/ai/roles";
 import { createLinkCode, unlinkChannel, type LinkOffer } from "@/lib/channels";
+import { createAgentKey, revokeAgentKey, type AgentKeyView } from "@/lib/mcp/agent-keys";
 import { isMessageChannel } from "@/lib/channels/registry";
 import { db } from "@/lib/db";
 import { draftFrom } from "@/lib/draft";
@@ -112,6 +113,24 @@ export async function unlinkChannelAction(kind: string) {
 }
 
 const linkLimiter = createLimiter(10, 10 * 60_000);
+
+/** The signed-in seller makes a key for their own AI agent. The key comes back once. */
+export async function createAgentKeyAction(label: string) {
+  return run<{ key: string; view: AgentKeyView }>(async () => {
+    const user = await as("seller");
+    if (!agentKeyLimiter.hit(user.id)) throw new StepError("Too many keys made. Wait a few minutes.");
+    return createAgentKey(user.sellerId!, label, { shared: DEMO_USERS.some((u) => u.id === user.id) });
+  });
+}
+
+export async function revokeAgentKeyAction(id: string) {
+  return run(async () => {
+    const user = await as("seller");
+    await revokeAgentKey(user.sellerId!, id);
+  });
+}
+
+const agentKeyLimiter = createLimiter(10, 10 * 60_000);
 
 export async function scoreAction(tenderId: string) {
   return run(async () => scoreTender(tenderId, (await owner(tenderId)).id));

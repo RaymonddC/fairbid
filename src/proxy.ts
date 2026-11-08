@@ -23,8 +23,9 @@ function buildCsp(nonce: string): string {
   ].join("; ");
 }
 
-// Reached by machines or before login. Each one checks its own credentials.
-const PUBLIC_PATH = /^\/(login$|register$|api\/(health|ready|mcp|webhooks)(\/|$))/;
+// Reached by machines or before login. Each one checks its own credentials;
+// /agents is the public guide for connecting a seller's AI agent.
+const PUBLIC_PATH = /^\/(login$|register$|agents$|api\/(health|ready|mcp|webhooks)(\/|$))/;
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
