@@ -32,9 +32,9 @@ export interface RoleCall<S extends z.ZodType> {
 }
 
 let client: GoogleGenAI | null = null;
-// Short timeout: a role runs inside a person's click.
+// Short timeout: a role runs inside a person's click, and the fallback model gets its turn.
 const gemini = () =>
-  (client ??= new GoogleGenAI({ vertexai: true, project: aiProject(), location: aiLocation(), httpOptions: { timeout: 45_000 } }));
+  (client ??= new GoogleGenAI({ vertexai: true, project: aiProject(), location: aiLocation(), httpOptions: { timeout: 25_000 } }));
 
 const toParts = (user: string | UserPart[]): Part[] =>
   (typeof user === "string" ? [{ text: user }] : user).map((p) => ("text" in p ? { text: p.text } : { inlineData: p.image }));

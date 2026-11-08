@@ -107,7 +107,7 @@ export async function reviewProposals(input: ReviewInput, fixture: () => ReviewQ
       system: PROPOSAL_REVIEWER,
       user: JSON.stringify(input, null, 1),
       schema: ReviewSchema,
-      effort: "medium",
+      effort: "low",
     },
     () => ({ questions: fixture() }),
   );
@@ -170,7 +170,7 @@ export async function scoreBlind(
       system: BLIND_SCORER,
       user: [...images, { text }],
       schema: ScoreSchema,
-      effort: "medium",
+      effort: "low",
     },
     fallback,
   );
