@@ -86,6 +86,9 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
           <Row label="Delivered cost" value={eur(bid.deliveredCents)} muted />
         </dl>
         <p className="text-xs text-muted">{hasVat ? "Import VAT is paid at the border and reclaimed in your VAT return." : "No import VAT at this destination."}</p>
+        <p className={`text-xs ${bid.dutyWarning ? "text-warn" : "text-muted"}`}>
+          {bid.dutyWarning ?? `Import duty at ${bid.dutyPct}%: ${bid.dutySource}.`}
+        </p>
         {phased && (
           <div className="grid gap-2 border-t border-line pt-3">
             <h3 className="text-sm">Held one phase at a time</h3>

@@ -27,7 +27,7 @@ export async function resetDemoTender(db: PrismaClient): Promise<void> {
 
   for (const { hsPrefix, destination, effectiveFrom, ...rest } of DEMO_TARIFFS) {
     await db.tariffRate.upsert({
-      where: { hsPrefix_destination_effectiveFrom: { hsPrefix, destination, effectiveFrom } },
+      where: { hsPrefix_destination_origin_effectiveFrom: { hsPrefix, destination, origin: "", effectiveFrom } },
       create: { hsPrefix, destination, effectiveFrom, ...rest },
       update: rest,
     });

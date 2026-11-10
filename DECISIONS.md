@@ -89,3 +89,10 @@ Delivered cost, the cost, lead-time and completeness scores, the weighted total,
 Some published criteria are judgements, not sums: "handmade proof" means reading a bid's description, photos and answers. Code cannot score that honestly, so the AI scores each such reviewed criterion from 0 to 100, with a written reason, before the code weights and ranks the bids (GM's call, 10 Nov 2026). This replaces the earlier rule that the AI writes reasons only.
 
 The limits stay in code. The AI sees each bid blind: a letter, never the seller's name, country or price. It scores only the reviewed criteria; delivered cost, lead time and completeness are never its call, and the weights are the buyer's, published before bidding. Every AI score is shown with its reason, and the event log records whether the AI or a scripted fixture scored them. Because a model can answer differently, two runs can rank close bids differently; the app says so beside the scores, and the buyer, not the ranking, picks the winner. With the AI off, the scripted scores stand in and are labelled as scripted.
+
+## Duty rates are checked with Easyship; the demo keeps its assumed rate
+
+Duty depends on the customs code and on where the goods are made: the same cotton napkins pay 9.6% into Germany from Indonesia and 0% from Vietnam. Each bid's rate is looked up once with Easyship's tax and duty API for its code (6 digits or more) and its seller's country, when the bid is sealed and again before scoring if that failed, and kept in `TariffRate` with its source and date (R chose Easyship, 8 Nov 2026). Easyship's general and preferential rates are used as they come, with stacked duties such as US Section 301 added in.
+
+A bid with no checked rate (a 4-digit code, Easyship down, no token) is still priced, on the closest broader rate, so ranking always runs, and every screen that shows its price says "Borrowed rate" (R's call, 10 Nov 2026). The demo tender always uses its seeded 12% and says "Demo rate", so the demo tells the same story every time; the open question records what real rates would change.
+

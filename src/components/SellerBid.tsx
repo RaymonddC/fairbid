@@ -417,6 +417,11 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
             </dl>
             {goods > 0 && <Pill tone={delivered <= t.budgetCents ? "ok" : "flag"}>{delivered <= t.budgetCents ? c.within(budget) : c.over(budget)}</Pill>}
             <p className="text-xs text-muted">{c.vatNote}</p>
+            {mine && (
+              <p className={`text-xs ${t.dutyWarning ? "text-warn" : "text-muted"}`}>
+                {t.dutyWarning ?? `${c.duty} ${t.dutyPct}%: ${t.dutySource}.`}
+              </p>
+            )}
           </Panel>
 
           {waiting === 0 && questionsPanel}

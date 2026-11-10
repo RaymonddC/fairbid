@@ -385,14 +385,19 @@ model WebhookEvent {
   receivedAt DateTime @default(now())
 }
 
+// A duty rule. Rows with an origin were looked up for that exact customs code and
+// country of origin (Easyship) and are verified; the rest are broad assumptions a bid
+// may borrow, and a borrowed rate is shown with a warning.
 model TariffRate {
   id            String   @id @default(uuid())
   hsPrefix      String
   destination   String
+  // Country the goods are made in (ISO alpha-2), or "" for a rule that ignores origin.
+  origin        String   @default("")
   dutyPct       Decimal  @db.Decimal(5, 2)
   vatPct        Decimal  @db.Decimal(5, 2)
   effectiveFrom DateTime
   source        String
 
-  @@unique([hsPrefix, destination, effectiveFrom])
+  @@unique([hsPrefix, destination, origin, effectiveFrom])
 }

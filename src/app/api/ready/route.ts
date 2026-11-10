@@ -3,6 +3,7 @@ import { aiEnabled } from "@/lib/ai/model";
 import { aiLocation, aiModel } from "@/lib/ai-config";
 import { CHANNELS } from "@/lib/channels/registry";
 import { db } from "@/lib/db";
+import { dutyLookupEnabled } from "@/lib/duty-lookup";
 import { createPayPalClient, loadConfig } from "@/lib/paypal/client";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,14 @@ export async function GET() {
       ok: Boolean(process.env.PAYPAL_WEBHOOK_ID),
       critical: false,
       detail: process.env.PAYPAL_WEBHOOK_ID ? "Configured." : "PAYPAL_WEBHOOK_ID is not set, so webhooks are rejected.",
+    },
+    {
+      name: "duty_rates",
+      ok: dutyLookupEnabled(),
+      critical: false,
+      detail: dutyLookupEnabled()
+        ? "Easyship lookup on: each bid's duty rate is checked for its code and country of origin."
+        : 'EASYSHIP_TOKEN is not set, so bids are priced on seeded rates, marked "borrowed" (DEPLOY.md, "Duty rates").',
     },
     // Optional extras, so never critical: the in-app inbox works without them.
     ...Object.values(CHANNELS).map((c) => ({

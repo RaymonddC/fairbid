@@ -90,6 +90,8 @@ export function buildSellerServer(sellerId: string): McpServer {
           closes_at: v.closesAt,
           criteria: v.criteria.map((c) => ({ name: c.name, weight_pct: c.weightPct, rubric: c.rubric })),
           duty_pct: v.dutyPct,
+          duty_rate_source: v.dutySource,
+          duty_rate_warning: v.dutyWarning,
           vat_pct: v.vatPct,
           reference_photo_count: v.photos.length,
           my_bid: v.myBid && {

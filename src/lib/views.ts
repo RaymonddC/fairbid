@@ -40,6 +40,10 @@ export interface BidView {
   shippingCents: number;
   feesCents: number;
   dutyCents: number;
+  /** Duty rate used, where it came from, and a warning when it is borrowed (src/lib/duty.ts). */
+  dutyPct: number;
+  dutySource: string;
+  dutyWarning: string | null;
   vatCents: number;
   /** Delivered cost with import VAT reclaimed. */
   deliveredCents: number;
@@ -204,6 +208,9 @@ export interface SellerTenderView {
   criteria: CriterionView[];
   dutyPct: number;
   vatPct: number;
+  dutySource: string;
+  /** Set when the seller's bid is priced on a borrowed duty rate. */
+  dutyWarning: string | null;
   myBid: {
     goodsCents: number;
     shippingCents: number;

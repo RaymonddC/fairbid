@@ -2,7 +2,10 @@
 // a tender is sealed, nothing about other sellers' bids leaves here except the count.
 
 import { db } from "./db";
-import { holdCents, landedCost, type TariffInput } from "./landed";
+import { DEMO_TENDER_ID } from "../../prisma/seed-data";
+import { pickTariff, type Tariff } from "./duty";
+import { ratesFor } from "./duty-lookup";
+import { holdCents, landedCost } from "./landed";
 import { isFailedCapture } from "./paypal/webhook";
 import { isLive, nextStep } from "./phases";
 import { DEMO_QUESTIONS } from "./review-fixture";
@@ -43,22 +46,15 @@ const topicOf = (question: string) => {
   return first.length > 48 ? `${first.slice(0, 46).trimEnd()}…` : first || "Question";
 };
 
-/** The tariff for a customs code and destination: the longest matching prefix,
- * latest rule in force. Falls back to any rule for the destination. */
-export async function tariffFor(hsCode: string | null, destination: string): Promise<TariffInput> {
-  const rates = await db.tariffRate.findMany({
-    where: { destination, effectiveFrom: { lte: new Date() } },
-    orderBy: { effectiveFrom: "desc" },
-  });
-  const digits = (hsCode ?? "").replace(/\D/g, "");
-  const match =
-    rates.filter((r) => digits.startsWith(r.hsPrefix)).sort((a, b) => b.hsPrefix.length - a.hsPrefix.length)[0] ?? rates[0];
-  if (!match) throw new Error(`No tariff rule for ${destination}. Run npm run db:seed.`);
-  return {
-    dutyPct: Number(match.dutyPct),
-    vatPct: Number(match.vatPct),
-    asOf: match.effectiveFrom.toISOString().slice(0, 10),
-  };
+/** The tariff for a customs code, country of origin and destination: a checked rate if
+ * there is one, otherwise a borrowed one that carries a warning (src/lib/duty.ts). */
+export async function tariffFor(
+  hsCode: string | null,
+  destination: string,
+  origin: string | null = null,
+  opts: { demo?: boolean } = {},
+): Promise<Tariff> {
+  return pickTariff(await ratesFor(destination), hsCode, origin, destination, opts);
 }
 
 const line = (lines: { kind: string; amountCents: number }[], kind: string) =>
@@ -200,9 +196,10 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
   const bids: BidView[] = [];
   if (!sealed) {
     for (const b of t.bids) {
+      const tariff = await tariffFor(b.hsCode, t.destinationCountry, b.seller.country, { demo: t.id === DEMO_TENDER_ID });
       const landed = landedCost(
         { goodsCents: line(b.lines, "goods"), shippingCents: line(b.lines, "shipping"), feesCents: line(b.lines, "fees") },
-        await tariffFor(b.hsCode, t.destinationCountry),
+        tariff,
       );
       const scores = b.scores.map((s) => ({ criterionId: s.criterionId, score: s.score, reason: s.reason }));
       bids.push({
@@ -219,6 +216,9 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
         shippingCents: landed.shippingCents,
         feesCents: landed.feesCents,
         dutyCents: landed.dutyCents,
+        dutyPct: tariff.dutyPct,
+        dutySource: tariff.source,
+        dutyWarning: tariff.warning,
         vatCents: landed.vatCents,
         deliveredCents: landed.deliveredReclaimedCents,
         deliveredGrossCents: landed.deliveredGrossCents,
@@ -320,7 +320,7 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
   if (!t) return null;
   const status = t.status as TenderStatus;
   const mine = t.bids.find((b) => b.sellerId === sellerId);
-  const tariff = await tariffFor(mine?.hsCode ?? "6302", t.destinationCountry);
+  const tariff = await tariffFor(mine?.hsCode ?? "6302", t.destinationCountry, mine?.seller.country ?? null, { demo: t.id === DEMO_TENDER_ID });
   const won = t.award && mine && t.award.bidId === mine.id ? t.award : null;
   const milestones = won ? milestoneViews(won) : [];
 
@@ -339,6 +339,9 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
     criteria: t.criteria.map((c) => ({ id: c.id, name: c.name, weightPct: c.weightPct, rubric: c.rubric, kind: criterionKind(c.name) })),
     dutyPct: tariff.dutyPct,
     vatPct: tariff.vatPct,
+    // Before a seller bids, the rate is only a preview for the usual code: no warning yet.
+    dutySource: tariff.source,
+    dutyWarning: mine ? tariff.warning : null,
     myBid: mine
       ? {
           goodsCents: line(mine.lines, "goods"),

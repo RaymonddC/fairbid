@@ -66,6 +66,10 @@ export function Compare({ t }: { t: TenderView }) {
   const flag = t.flags[0];
   const weights = t.criteria.map((c) => `${c.name.toLowerCase()} ${c.weightPct}%`).join(", ");
   const judged = t.criteria.filter((c) => c.kind === "reviewed").map((c) => c.name.toLowerCase());
+  const borrowed = t.bids.filter((b) => b.dutyWarning);
+  // The top score need not be the cheapest delivered: a cheaper bid can lose on the other criteria.
+  const cheapestDelivered = [...t.bids].sort((a, b) => total(a) - total(b))[0];
+  const topIsCheapest = total(top) <= total(cheapestDelivered);
 
   return (
     <div className="grid gap-8">
@@ -141,7 +145,21 @@ export function Compare({ t }: { t: TenderView }) {
                 "No pair of bids matched on price, costs and wording."
               )}
             </Note>
-            <Note title={`Bid ${top.letter} is the best delivered offer`} stamp={!winnerId}>
+            <Note
+              title={
+                !borrowed.length
+                  ? "Duty rates are checked"
+                  : borrowed.every((b) => b.dutyWarning?.startsWith("Demo rate"))
+                    ? "Priced on the demo's assumed duty rate"
+                    : `${borrowed.length === 1 ? "Bid" : "Bids"} ${borrowed.map((b) => b.letter).join(", ")} use a borrowed duty rate`
+              }
+              tone={borrowed.length ? "warn" : undefined}
+            >
+              {borrowed.length
+                ? `${borrowed[0].dutyWarning} Each bid's rate and its source are under "Why each score".`
+                : "Each bid's import duty uses the rate for its own customs code and the country the goods are made in, looked up with Easyship."}
+            </Note>
+            <Note title={topIsCheapest ? `Bid ${top.letter} is the best delivered offer` : `Bid ${top.letter} scores highest`} stamp={!winnerId && topIsCheapest}>
               {saving > 0 ? (
                 <>
                   <span className="num font-semibold text-ink">{eur(saving)}</span> less than the lowest quote, delivered
@@ -150,6 +168,8 @@ export function Compare({ t }: { t: TenderView }) {
                 "Against the lowest quote, delivered"
               )}
               {!hasVat ? "." : reclaimVat ? ", VAT reclaimed." : ", VAT included."}
+              {!topIsCheapest &&
+                ` Bid ${cheapestDelivered.letter} costs ${eur(total(top) - total(cheapestDelivered))} less delivered but scores lower on the other criteria.`}
             </Note>
           </ol>
         )}
@@ -245,6 +265,7 @@ function ScoreReasons({ t, withVat, winnerId }: { t: TenderView; withVat: boolea
                 </span>
               </summary>
               <dl className="grid gap-x-4 gap-y-2 px-4 pb-4 text-sm sm:grid-cols-[190px_1fr]">
+                <DutyRate bid={t.bids.find((b) => b.id === r.id)} />
                 {t.criteria.map((c) => {
                   const s = r.scores.find((x) => x.criterionId === c.id);
                   return (
@@ -263,6 +284,20 @@ function ScoreReasons({ t, withVat, winnerId }: { t: TenderView; withVat: boolea
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** The duty rate a bid was priced on, where it came from, and a warning when it is borrowed. */
+function DutyRate({ bid }: { bid?: TenderView["bids"][number] }) {
+  if (!bid) return null;
+  return (
+    <div className="contents">
+      <dt className="text-muted">Import duty rate</dt>
+      <dd>
+        <span className="num">{bid.dutyPct}%</span>. {bid.dutySource}.
+        {bid.dutyWarning && <span className="mt-1 block text-warn">{bid.dutyWarning}</span>}
+      </dd>
     </div>
   );
 }

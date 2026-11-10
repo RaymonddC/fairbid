@@ -25,6 +25,7 @@ import {
   leadTimeScore,
 } from "./scoring";
 import { assertTransition, canSubmitBid, milestoneAmounts, type TenderStatus } from "./tender";
+import { ensureDutyRate, ensureDutyRates } from "./duty-lookup";
 import { tariffFor } from "./tender-data";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DESTINATIONS } from "./format";
@@ -256,14 +257,19 @@ export async function scoreTender(tenderId: string, actor: string) {
   if (status !== "REVIEWING" && status !== "CLARIFYING") throw new StepError("This tender is not waiting to be scored.");
   const t = await db.tender.findUniqueOrThrow({
     where: { id: tenderId },
-    include: { criteria: true, bids: { include: { lines: true } } },
+    include: { criteria: true, bids: { include: { lines: true, seller: true } } },
   });
   if (t.bids.length === 0) throw new StepError("There are no bids to score.");
+  // Check any duty rate not looked up when the bid was sealed (Easyship was down, or the
+  // token was not set yet). Whatever still has no checked rate is priced on a borrowed one.
+  // The demo tender stays on its assumed rate (pickTariff, "demo"), so it needs no lookup.
+  const demo = tenderId === DEMO_TENDER_ID;
+  if (!demo) await ensureDutyRates(t.destinationCountry, t.bids.map((b) => ({ hsCode: b.hsCode, origin: b.seller.country })));
   const windowDays = Number((t.spec as { deliveryDays?: number })?.deliveryDays ?? 28);
 
   const priced: { bid: (typeof t.bids)[number]; landed: ReturnType<typeof landedCost>; tariff: Awaited<ReturnType<typeof tariffFor>>; delivered: number }[] = [];
   for (const b of t.bids) {
-    const tariff = await tariffFor(b.hsCode, t.destinationCountry);
+    const tariff = await tariffFor(b.hsCode, t.destinationCountry, b.seller.country, { demo });
     const landed = landedCost(
       { goodsCents: lineOf(b.lines, "goods"), shippingCents: lineOf(b.lines, "shipping"), feesCents: lineOf(b.lines, "fees") },
       tariff,
@@ -303,7 +309,7 @@ export async function scoreTender(tenderId: string, actor: string) {
   await db.$transaction(async (tx) => {
     await move(tx, tenderId, status, "PRICED");
     for (const p of priced) {
-      const source = `tariff ${p.bid.hsCode ?? "6302"} ${t.destinationCountry}, as of ${p.tariff.asOf}`;
+      const source = `${p.tariff.dutyPct}% duty on ${p.bid.hsCode ?? "6302"} from ${p.bid.seller.country} into ${t.destinationCountry}: ${p.tariff.warning ? "borrowed, " : ""}${p.tariff.source}, as of ${p.tariff.asOf}`;
       for (const [kind, amountCents] of [
         ["duty", p.landed.dutyCents],
         ["vat", p.landed.vatCents],
@@ -434,7 +440,7 @@ export async function startAward(
   if (!bid || bid.tenderId !== tenderId) throw new StepError("That bid is not part of this tender.");
   const landed = landedCost(
     { goodsCents: lineOf(bid.lines, "goods"), shippingCents: lineOf(bid.lines, "shipping"), feesCents: lineOf(bid.lines, "fees") },
-    await tariffFor(bid.hsCode, t.destinationCountry),
+    await tariffFor(bid.hsCode, t.destinationCountry, bid.seller.country, { demo: tenderId === DEMO_TENDER_ID }),
   );
   const total = holdCents(landed);
   const windowDays = Number((t.spec as { deliveryDays?: number })?.deliveryDays ?? 28);
@@ -830,6 +836,11 @@ export async function submitBid(tenderId: string, sellerId: string, input: BidIn
   });
   // The hash only: the event log must not leak a sealed price.
   await appendEvent(tenderId, actor, "bid.sealed", { sellerId, sealedHash });
+  // Check the duty rate for this code and origin now, so scoring finds it cached.
+  if (tenderId !== DEMO_TENDER_ID) {
+    const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { country: true } });
+    await ensureDutyRate(input.hsCode, t.destinationCountry, seller?.country ?? null);
+  }
 }
 
 export interface TenderInput {

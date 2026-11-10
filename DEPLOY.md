@@ -73,6 +73,22 @@ npm run channels:telegram -- info
 
 A seller then presses **Link** on the dashboard and sends the code from their chat. Twilio's sandbox accepts free text only within 24 hours of the seller's last message to it; a seller who has not written in a day will not get the question there (the inbox still has it), so send `link` or any message shortly before a demo.
 
+## Duty rates (Easyship)
+
+Each bid's import duty rate is looked up once with Easyship for its customs code (6 digits or more) and the country the goods are made in, then kept in `TariffRate` with its source. Without a checked rate, a bid is priced on a broader seeded rate and every screen that shows it says "Borrowed rate".
+
+**Create the secret, and let `fairbid-run` read it, before the first deploy that contains this change.** `deploy.yml` maps `fairbid-easyship-token`, and Cloud Run refuses to deploy a service whose secret it cannot read.
+
+```bash
+# Token from Easyship: Connect, API & Webhooks, your connection, Production access token.
+# Give the connection the Tax & Duties scope only. Value on stdin, never on the command line.
+printf '%s' "<token>" | gcloud secrets create fairbid-easyship-token --data-file=- --project <project>
+gcloud secrets add-iam-policy-binding fairbid-easyship-token --project <project> \
+  --member="serviceAccount:fairbid-run@<project>.iam.gserviceaccount.com" --role=roles/secretmanager.secretAccessor
+```
+
+Easyship counts successful production calls against the plan's monthly allowance; failed and sandbox calls are free. A rate is looked up once per code, origin and destination, so a demo uses a handful of calls.
+
 ## Turn on the AI roles
 
 The roles run on Gemini through Vertex AI. The service signs in as its own service account (`roles/aiplatform.user`, granted by the setup script), so there is no key to store. `/api/ready` says which model is live. To turn the AI off, set the `AI_ENABLED` repo variable to `false` and redeploy: every role then answers from its scripted fixture.
