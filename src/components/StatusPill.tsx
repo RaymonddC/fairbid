@@ -16,14 +16,14 @@ export function StatusPill({ status, waiting = 0, heldCents }: { status: TenderS
     case "REVIEWING":
     case "CLARIFYING":
       return (
-        <Pill tone="warn" dot>
-          {waiting ? `Bids open, ${waiting} replies waiting` : "Bids open"}
+        <Pill tone={waiting ? "warn" : "dye"} dot>
+          {waiting ? `Bidding closed, ${waiting} replies waiting` : "Bidding closed"}
         </Pill>
       );
     case "PRICED":
     case "SCORED":
       return (
-        <Pill tone="warn" dot>
+        <Pill tone="dye" dot>
           Ready to award
         </Pill>
       );

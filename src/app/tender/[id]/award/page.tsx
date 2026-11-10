@@ -3,6 +3,8 @@ import { AwardPay } from "@/components/AwardPay";
 import { tenderView } from "@/lib/cached";
 import { getUser } from "@/lib/session";
 
+export const metadata = { title: "Award and pay · FairBid" };
+
 export default async function Page({
   params,
   searchParams,

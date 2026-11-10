@@ -5,6 +5,8 @@ import { DEMO_USERS } from "@/lib/auth";
 import { sellerTenderView, tenderView } from "@/lib/cached";
 import { getUser } from "@/lib/session";
 
+export const metadata = { title: "Tender · FairBid" };
+
 export default async function TenderPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   if (!user) redirect("/login");
@@ -13,7 +15,7 @@ export default async function TenderPage({ params }: { params: Promise<{ id: str
   if (user.role === "seller") {
     const view = await sellerTenderView(id, user.sellerId!);
     if (!view) notFound();
-    return <SellerBid t={view} sellerName={user.name} />;
+    return <SellerBid t={view} />;
   }
 
   const t = await tenderView(id);

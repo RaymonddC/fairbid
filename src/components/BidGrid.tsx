@@ -1,8 +1,9 @@
 "use client";
 
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
+import { nameGrid } from "@/lib/grid";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { moneyFor } from "@/lib/format";
 import { rankBids, type BidView, type CriterionView } from "@/lib/views";
 
@@ -90,6 +91,7 @@ export function BidGrid({
   currency: string;
 }) {
   const eur = useMemo(() => moneyFor(currency), [currency]);
+  const gridBox = useRef<HTMLDivElement>(null);
   const scored = useMemo(() => scoreRows(bids, withVat, winnerId), [bids, withVat, winnerId]);
   const rows = useMemo(() => (revealed ? scored : [...scored].sort((a, b) => a.goodsCents - b.goodsCents)), [scored, revealed]);
 
@@ -110,7 +112,7 @@ export function BidGrid({
         valueFormatter: (p) => eur(p.value),
         width: withVat ? 160 : 110,
         type: "rightAligned",
-        cellClass: "font-semibold",
+        cellClass: "ag-right-aligned-cell font-semibold",
       });
       for (const c of criteria.filter((c) => c.kind !== "cost")) {
         list.push({
@@ -122,7 +124,7 @@ export function BidGrid({
         });
       }
       list.push(
-        { headerName: "Score", field: "score", valueFormatter: (p) => p.value.toFixed(1), width: 80, type: "rightAligned", cellClass: "font-semibold" },
+        { headerName: "Score", field: "score", valueFormatter: (p) => p.value.toFixed(1), width: 80, type: "rightAligned", cellClass: "ag-right-aligned-cell font-semibold" },
         { headerName: "Status", field: "statuses", cellRenderer: StatusCell, cellDataType: false, minWidth: 200, flex: 1, sortable: false },
       );
     }
@@ -147,7 +149,7 @@ export function BidGrid({
           </li>
         ))}
       </ul>
-      <div className="hidden w-full sm:block">
+      <div ref={gridBox} className="hidden w-full sm:block">
         {/* Remount when the column set changes, so AG Grid does not keep the old column widths. */}
         <AgGridReact<Row>
           key={`${revealed}-${withVat}-${winnerId ?? ""}`}
@@ -158,6 +160,9 @@ export function BidGrid({
           rowHeight={52}
           getRowId={(p) => p.data.id}
           defaultColDef={{ sortable: true, resizable: true, suppressMovable: true }}
+          // Tab enters and leaves the table in one stop; arrow keys move between cells.
+          tabToNextCell={() => false}
+          onGridReady={() => nameGrid(gridBox.current, "Bids, scored blind")}
         />
       </div>
     </>

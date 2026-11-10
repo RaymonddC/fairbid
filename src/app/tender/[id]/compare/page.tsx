@@ -3,6 +3,8 @@ import { Compare } from "@/components/Compare";
 import { tenderView } from "@/lib/cached";
 import { getUser } from "@/lib/session";
 
+export const metadata = { title: "Compare · FairBid" };
+
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   const { id } = await params;

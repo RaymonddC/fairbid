@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { InlineScript } from "@/components/InlineScript";
@@ -8,8 +8,10 @@ import { TopNav } from "@/components/TopNav";
 import { getUser } from "@/lib/session";
 import "./globals.css";
 
-const body = Geist({ variable: "--font-body", subsets: ["latin"] });
-const code = Geist_Mono({ variable: "--font-code", subsets: ["latin"] });
+// A tender is a document: a print serif for headings, a technical sans for the work, its mono for references.
+const body = IBM_Plex_Sans({ variable: "--font-body", subsets: ["latin"], weight: ["400", "500", "600"] });
+const code = IBM_Plex_Mono({ variable: "--font-code", subsets: ["latin"], weight: ["400", "500"] });
+const display = Newsreader({ variable: "--font-serif", subsets: ["latin"], weight: ["500", "600"] });
 
 export const metadata: Metadata = {
   title: "FairBid",
@@ -25,7 +27,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const user = await getUser();
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${body.variable} ${code.variable} h-full antialiased`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${body.variable} ${code.variable} ${display.variable} h-full antialiased`}>
       <head>
         <InlineScript nonce={nonce} html={themeScript} />
       </head>
@@ -38,7 +40,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         </a>
         <TopNav user={user} />
         <div className="relative min-w-0">
-          <div className="page-glow" aria-hidden="true" />
           <main id="main" tabIndex={-1} className="relative z-[1] mx-auto w-full max-w-[1200px] px-4 pb-16 pt-6 outline-none sm:px-8 lg:pt-10">
             {children}
           </main>

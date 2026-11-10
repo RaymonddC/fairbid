@@ -32,14 +32,17 @@ export async function signInAction(formData: FormData) {
   redirect(safeNext(formData.get("next")));
 }
 
-export type PasswordSignInState = { error: string | null; email: string };
+/** `field` names the one field to mark when only that one is missing; otherwise both are marked. */
+export type PasswordSignInState = { error: string | null; email: string; field?: "email" | "password" };
 
 /** Email and password sign-in. A wrong email and a wrong password get the same answer
  * and take the same time, so the form does not reveal which emails have accounts. */
 export async function passwordSignInAction(_prev: PasswordSignInState, formData: FormData): Promise<PasswordSignInState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase().slice(0, 200);
   const password = String(formData.get("password") ?? "").slice(0, 200);
-  if (!email || !password) return { error: "Enter your email and password.", email };
+  if (!email && !password) return { error: "Enter your email and password.", email };
+  if (!email) return { error: "Enter your email.", email, field: "email" };
+  if (!password) return { error: "Enter your password.", email, field: "password" };
 
   // Limits guessing per account and per address. The same answer either way, so it
   // reveals nothing about which emails exist.
@@ -63,7 +66,10 @@ export async function signOutAction() {
   redirect("/login");
 }
 
-export type RegisterState = { error: string | null; field?: "name" | "email" | "password" | "paypalEmail"; values: Record<string, string> };
+export type RegisterField = "name" | "email" | "password" | "country" | "paypalEmail";
+
+/** `error` is for the form as a whole; `errors` holds every field's problem at once, shown under that field. */
+export type RegisterState = { error: string | null; errors?: Partial<Record<RegisterField, string>>; values: Record<string, string> };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -73,20 +79,27 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const values = { name: get("name"), email: get("email").toLowerCase(), role: get("role"), country: get("country"), paypalEmail: get("paypalEmail").toLowerCase() };
   const password = String(formData.get("password") ?? "");
-  const fail = (error: string, field?: RegisterState["field"]): RegisterState => ({ error, field, values });
+  const fail = (error: string | null, errors?: RegisterState["errors"]): RegisterState => ({ error, errors, values });
 
   if (!registerByIp.hit(await clientIp())) return fail("Too many new accounts from here. Try again in an hour.");
-  if (values.name.length < 2 || values.name.length > 80) return fail("Enter your name or your company's name.", "name");
-  if (!EMAIL.test(values.email) || values.email.length > 200) return fail("Enter a valid email address.", "email");
-  if (password.length < 8) return fail("Use at least 8 characters for the password.", "password");
-  if (password.length > 200) return fail("That password is too long.", "password");
   const role = values.role === "seller" ? "seller" : "buyer";
-  if (role === "seller") {
-    if (!(SELLER_COUNTRIES as readonly string[]).includes(values.country)) return fail("Choose the country you ship from.");
-    if (!EMAIL.test(values.paypalEmail)) return fail("Enter the PayPal email that should receive your payments.", "paypalEmail");
+
+  // Every field is checked at once, so one try shows everything that needs fixing.
+  const errors: Partial<Record<RegisterField, string>> = {};
+  if (values.name.length < 2 || values.name.length > 80) {
+    errors.name = role === "seller" ? "Enter your name or your workshop's name." : "Enter your name or your company's name.";
   }
+  if (!EMAIL.test(values.email) || values.email.length > 200) errors.email = "Enter a valid email address.";
+  if (password.length < 8) errors.password = "Use at least 8 characters.";
+  else if (password.length > 200) errors.password = "That password is too long.";
+  if (role === "seller") {
+    if (!(SELLER_COUNTRIES as readonly string[]).includes(values.country)) errors.country = "Choose the country you ship from.";
+    if (!EMAIL.test(values.paypalEmail)) errors.paypalEmail = "Enter the PayPal email that should receive your payments.";
+  }
+  if (Object.keys(errors).length > 0) return fail(null, errors);
+
   if (await db.account.findUnique({ where: { email: values.email } })) {
-    return fail("An account with this email already exists. Sign in instead.", "email");
+    return fail(null, { email: "An account with this email already exists. Sign in instead." });
   }
 
   const id = `acct-${randomUUID()}`;
@@ -110,7 +123,7 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
     });
   } catch (error) {
     // Two sign-ups with the same email at once: the second gets the same answer as above.
-    if ((error as { code?: unknown })?.code === "P2002") return fail("An account with this email already exists. Sign in instead.", "email");
+    if ((error as { code?: unknown })?.code === "P2002") return fail(null, { email: "An account with this email already exists. Sign in instead." });
     throw error;
   }
   await setSession(id);

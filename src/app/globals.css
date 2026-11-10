@@ -1,22 +1,28 @@
 @import "tailwindcss";
 
+/* A tablet or laptop window under 720px tall: the sign-in page tightens so it still fits one screen. */
+@custom-variant short (@media (min-width: 640px) and (max-height: 720px));
+/* A desktop window with room to spare: the sign-in form sits on its own paper slip. */
+@custom-variant roomy (@media (min-width: 1024px) and (min-height: 760px));
+
 /*
-  FairBid: a working tool for buyers and sellers, styled like a sharp, technical dashboard (Linear / Vercel).
-  Two themes share one set of tokens: light is crisp and high-contrast; dark is indigo night, not grey.
+  FairBid: a working tool for buyers and sellers. A tender is paperwork, so light mode is paper on a desk:
+  warm sheets with sharp corners on a warm desk, not grey dashboard cards. Dark is indigo night, not grey.
   The brand indigo (Sari's dye) stays the same in both themes; turmeric marks only the logo seal. Semantic colours (ok / warn / flag) are muted and separate.
-  Geist for text, Geist Mono only for identifiers. Motion only shows what changed.
+  Newsreader for headings, IBM Plex Sans for text, IBM Plex Mono only for identifiers. Motion only shows what changed.
 */
 
 :root {
   --brand: #2e3fa3; /* fixed indigo for the logo tile, same in both themes */
-  --canvas: #f7f8fa;
-  --surface: #ffffff;
-  --raised: #fbfbfd;
+  --canvas: #f4f1ea; /* the desk */
+  --surface: #fffdf8; /* paper */
+  --slip: #fffdf8; /* the sign-in slip: the same paper */
+  --raised: #f9f6ef;
   --ink: #0f1222;
-  --muted: #575e73;
-  --faint: #6b7186; /* 4.6:1 on canvas, AA for small text */
-  --line: #e6e8ee;
-  --line-strong: #d2d6e0;
+  --muted: #565c70; /* 5.9:1 on the desk */
+  --faint: #62687c; /* 4.9:1 on the desk, AA for small text */
+  --line: #e6e0d4;
+  --line-strong: #d3cbbb;
   --dye: #2e3fa3;
   --dye-hover: #25348a;
   --dye-soft: #eef0fc;
@@ -24,13 +30,12 @@
   --sun-soft: #fcf3dd;
   --ok: #1b7a4b;
   --ok-soft: #e4f4ea;
-  --warn: #8f5c00;
+  --warn: #8a5800;
   --warn-soft: #fbf0d6;
   --flag: #b2381f;
   --flag-soft: #fbe8e3;
   --duty: #d0901e;
-  --card-shadow: 0 1px 2px rgba(15, 18, 34, 0.04), 0 6px 16px -10px rgba(15, 18, 34, 0.12);
-  --glow: rgba(46, 63, 163, 0.1);
+  --card-shadow: 0 1px 1px rgba(40, 32, 16, 0.05), 0 3px 8px -4px rgba(40, 32, 16, 0.14); /* paper lying flat */
   --chart-1: #4a5bc4; /* paid to sellers; validated with the dataviz palette checks */
   --chart-2: #b7791f; /* still held */
   --skeleton-a: #eceef3;
@@ -41,6 +46,7 @@
 :root[data-theme="dark"] {
   --canvas: #0b0e1a;
   --surface: #121628;
+  --slip: #121628;
   --raised: #171c31;
   --ink: #eceef6;
   --muted: #a0a6bc;
@@ -60,7 +66,6 @@
   --flag-soft: rgba(240, 122, 95, 0.14);
   --duty: #e3a43a;
   --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-  --glow: rgba(110, 128, 255, 0.18);
   --chart-1: #7484ea;
   --chart-2: #b98022;
   --skeleton-a: #1a1f35;
@@ -95,8 +100,8 @@
   --color-chart-2: var(--chart-2);
   --font-sans: var(--font-body), system-ui, sans-serif;
   --font-mono: var(--font-code), ui-monospace, monospace;
-  /* Older class names: the display face is the same as the body now. */
-  --font-display: var(--font-body), system-ui, sans-serif;
+  /* Headings: a print serif, so pages read like the documents a tender is made of. */
+  --font-display: var(--font-serif), Georgia, serif;
 }
 
 body {
@@ -111,6 +116,12 @@ h1, h2, h3 {
   font-weight: 600;
   letter-spacing: -0.02em;
   text-wrap: balance;
+}
+@layer base {
+  h1, h2 {
+    font-family: var(--font-serif), Georgia, serif;
+    letter-spacing: -0.01em;
+  }
 }
 
 /* Money and counts. */
@@ -138,19 +149,8 @@ h1, h2, h3 {
 .notice {
   background: var(--surface);
   border: 1px solid var(--line);
+  border-radius: 4px; /* sheets of paper, not rounded app cards; wins over the components' rounded-xl */
   box-shadow: var(--card-shadow);
-}
-
-/* A soft indigo glow behind the top of every page. */
-.page-glow {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 380px;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(55% 90% at 22% 0%, var(--glow), transparent 70%),
-    radial-gradient(40% 70% at 88% 0%, color-mix(in oklab, var(--sun) 12%, transparent), transparent 70%);
 }
 
 /* A thin indigo line along the top of the one card that matters most (the recommended or winning bid). */
@@ -163,7 +163,20 @@ h1, h2, h3 {
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--dye), color-mix(in oklab, var(--dye) 30%, transparent));
+  background: var(--dye);
+}
+
+/* The decision, stamped like ink on a tender: the best delivered offer, or the award. */
+.stamp {
+  display: inline-block;
+  white-space: nowrap;
+  border: 2px double var(--dye);
+  border-radius: 4px;
+  padding: 1px 8px;
+  color: var(--dye);
+  font-size: 12px;
+  font-weight: 600;
+  transform: rotate(-4deg);
 }
 
 /* ---------- Motion: functional transitions only ---------- */
@@ -204,54 +217,25 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
 /* The brand side: a fixed night indigo in both themes, with one soft glow. */
 .auth-brand {
   --auth-night: #141a4d;
-  background: radial-gradient(70% 55% at 15% 0%, rgb(84 104 220 / 0.32), transparent 70%), var(--auth-night);
+  /* The tender sheet on the indigo desk: warm paper, ink, and a stamp in the brand indigo. */
+  --paper: #f6f2e8;
+  --paper-ink: #1b1f3b;
+  --paper-muted: #5a5d70;
+  --paper-line: #e3ddcf;
+  --paper-under: #ece6d8;
+  --stamp: #2e3fa3;
+  /* The paper stays light in dark mode, so its red stays the light theme's red. */
+  --paper-flag: #b2381f;
+  background: var(--auth-night);
   color: #fff;
 }
 
-/* Sized by the window's width and height, so the whole story fits on a short laptop screen. */
+/* Sized by the window's width and height, so the whole side fits on a short laptop screen. */
 .auth-headline {
-  font-size: clamp(34px, min(4.4vw, 5.6vh), 56px);
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-}
-
-/* The headline rises line by line from behind its own baseline. */
-.auth-line { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
-.auth-line-in {
-  display: block;
-  animation: auth-line 760ms var(--ease-out-strong) both;
-  animation-delay: calc(180ms + var(--i, 0) * 90ms);
-}
-@keyframes auth-line { from { transform: translateY(112%); } to { transform: none; } }
-
-/* The winning row lights up last. */
-@keyframes story-win { from { opacity: 0; } to { opacity: 1; } }
-.story-win {
-  background: rgb(255 255 255 / 0.08);
-  box-shadow: inset 0 0 0 1px rgb(227 167 47 / 0.55);
-  animation: story-win 420ms var(--ease-out-strong) 3050ms both;
-}
-
-/* Cards on the indigo side. */
-.auth-glass {
-  background: rgb(30 38 104 / 0.92);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12), 0 18px 40px -22px rgb(0 0 0 / 0.7);
-}
-
-/* Act one: the parcel sets off from Sari to Anna. */
-@keyframes route-line { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
-.route-line { animation: route-line 900ms var(--ease-drawer) 350ms both; }
-@keyframes route-parcel { from { transform: translateX(0); } to { transform: translateX(100%); } }
-.route-parcel { animation: route-parcel 2600ms cubic-bezier(0.77, 0, 0.175, 1) 450ms both; }
-
-/* Act three: the winner saved money, PayPal holds it, then each step is paid. */
-@keyframes story-pop { from { opacity: 0; transform: translateY(6px) scale(0.92); } to { opacity: 1; transform: none; } }
-.story-saved { animation: story-pop 460ms var(--ease-out-strong) 3100ms both; }
-.story-hold { animation: auth-rise 560ms var(--ease-out-strong) 3350ms both; }
-@keyframes story-step { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.story-step {
-  animation: story-step 420ms var(--ease-out-strong) both;
-  animation-delay: calc(3800ms + var(--i, 0) * 340ms);
+  font-size: clamp(30px, min(3.3vw, 4.6vh), 44px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 /* Page load: one staggered entrance, each piece set by --i. */
@@ -270,7 +254,7 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
 .auth-press { transition: transform 140ms var(--ease-out-strong), background-color 150ms ease; }
 .auth-press:active:not(:disabled) { transform: scale(0.98); }
 
-/* The bid story, played once: quotes arrive, then the real costs are added beside them. */
+/* The quote compare, played once: quotes arrive, then the real costs are added beside them. */
 @keyframes story-bar {
   0% { clip-path: inset(0 100% 0 0 round 4px); }
   32%, 52% { clip-path: inset(0 var(--gap) 0 0 round 4px); }
@@ -282,9 +266,46 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
 }
 @keyframes story-in { 0%, 66% { opacity: 0; } 82%, 100% { opacity: 1; } }
 .story-in { animation: story-in 2700ms linear 450ms both; }
-@keyframes story-end { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.story-end { animation: story-end 420ms var(--ease-out-strong) 3050ms both; }
 
+/* The tender sheet lies on the indigo desk on top of the other sealed bids, in 3D, and the
+   stack leans toward the pointer (TenderSheet sets --tilt-x and --tilt-y). */
+.tender-desk { perspective: 1100px; perspective-origin: 50% -10%; }
+.tender-stack {
+  transform-style: preserve-3d;
+  transform: rotateX(calc(10deg + var(--tilt-x, 0deg))) rotateY(var(--tilt-y, 0deg)) rotateZ(-1.5deg);
+  transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tender-land 900ms cubic-bezier(0.16, 1, 0.3, 1) 120ms backwards;
+}
+@keyframes tender-land {
+  from { opacity: 0; transform: translateY(40px) rotateX(48deg) rotateZ(-6deg); }
+}
+.tender-sheet {
+  background: var(--paper);
+  transform: translateZ(0);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 2px 3px rgb(5 8 30 / 0.3), 0 30px 50px -18px rgb(5 8 30 / 0.75);
+}
+.tender-under {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: var(--paper-under);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.5) inset, 0 10px 24px -10px rgb(5 8 30 / 0.7);
+}
+.tender-under:nth-child(1) { transform: translateZ(-16px) translate(14px, 14px) rotate(2.5deg); }
+.tender-under:nth-child(2) { transform: translateZ(-32px) translate(-12px, 26px) rotate(-2deg); filter: brightness(0.94); }
+.tender-under:nth-child(3) { transform: translateZ(-48px) translate(22px, 36px) rotate(4.5deg); filter: brightness(0.88); }
+/* The sheet fills in: costs are added under each quote, the totals land, A goes over, D is stamped. */
+.sheet-fill { animation: fade-in 400ms ease-out both; animation-delay: calc(1250ms + var(--i, 0) * 120ms); }
+@keyframes sheet-total { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.sheet-total { animation: sheet-total 380ms cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(2350ms + var(--i, 0) * 120ms); }
+.sheet-over { animation: fade-in 300ms ease-out 2750ms both; }
+@keyframes sheet-stamp {
+  0% { opacity: 0; transform: translateY(-26px) scale(1.9) rotate(-16deg); box-shadow: 0 34px 26px -6px rgb(5 8 30 / 0.35); }
+  55% { opacity: 1; }
+  78% { transform: translateY(0) scale(0.95) rotate(-7deg); box-shadow: 0 0 0 0 rgb(5 8 30 / 0); }
+  100% { opacity: 1; transform: rotate(-7deg); box-shadow: none; }
+}
+.sheet-stamp { animation: sheet-stamp 520ms cubic-bezier(0.16, 1, 0.3, 1) 3050ms both; transform: rotate(-7deg); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;
@@ -292,6 +313,6 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
-  .auth-rise, .story-end, .story-hold, .story-saved { animation-name: fade-in; }
-  .auth-line-in { animation-name: fade-in; }
+  .auth-rise, .sheet-total { animation-name: fade-in; }
+  .sheet-stamp { animation-name: fade-in; }
 }

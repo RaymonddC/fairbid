@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { closeBiddingAction, inviteAgentsAction } from "@/app/actions";
 import { countryName, dayTime, moneyFor } from "@/lib/format";
-import type { BidView, TenderView } from "@/lib/views";
+import { atLeast, type BidView, type TenderView } from "@/lib/views";
 import { ActionButton } from "./ActionButton";
 import { PhotoStrip } from "./Photos";
 import { Panel, Pill, SectionTitle, linkButton } from "./ui";
@@ -99,6 +99,27 @@ export function SealedBids({ t, agents = false }: { t: TenderView; agents?: bool
                 </ActionButton>
               )}
             </>
+          ) : atLeast(t.status, "SCORED") ? (
+            // Scored or later: the next step is forward, never back to the questions.
+            <>
+              <h2 className="text-base">{atLeast(t.status, "AWARDED") ? "Next: pay as the order moves" : "Next: compare delivered cost"}</h2>
+              <p className="text-sm text-muted">
+                {atLeast(t.status, "AWARDED")
+                  ? "The winner is chosen. Confirm each step of the order to pay it from the PayPal hold."
+                  : "The bids are scored. See every bid at the price delivered to your door, then award the best one."}
+              </p>
+              <Link href={`/tender/${t.id}/${atLeast(t.status, "AWARDED") ? "award" : "compare"}`} className={linkButton.primary}>
+                {atLeast(t.status, "AWARDED") ? "Go to payments" : "Compare delivered cost"}
+              </Link>
+              {questions > 0 && (
+                <Link
+                  href={`/tender/${t.id}/review`}
+                  className="inline-flex min-h-11 items-center justify-center text-sm text-muted underline underline-offset-4 hover:text-ink"
+                >
+                  {t.waitingReplies > 0 ? `See the questions (${t.waitingReplies} replies waiting)` : "See the questions"}
+                </Link>
+              )}
+            </>
           ) : (
             <>
               <h2 className="text-base">Next: the AI review</h2>
@@ -120,7 +141,10 @@ export function SealedBids({ t, agents = false }: { t: TenderView; agents?: bool
                   Let seller agents answer
                 </ActionButton>
               )}
-              <Link href={`/tender/${t.id}/compare`} className="text-center text-sm text-muted underline underline-offset-4 hover:text-ink">
+              <Link
+                href={`/tender/${t.id}/compare`}
+                className="inline-flex min-h-11 items-center justify-center text-sm text-muted underline underline-offset-4 hover:text-ink"
+              >
                 Skip to delivered cost
               </Link>
             </>
@@ -145,10 +169,11 @@ function OpenRow({ bid, eur, tenderId, questions }: { bid: BidView; eur: (cents:
           <span className="flex flex-wrap items-center gap-2 text-xs text-muted">
             {countryName(bid.country)}
             {questions > 0 && (
-              <Link href={`/tender/${tenderId}/review`} className="rounded-full">
-                <Pill tone="warn">
-                  {questions} question{questions > 1 ? "s" : ""}
-                </Pill>
+              <Link
+                href={`/tender/${tenderId}/review`}
+                className="relative font-medium text-dye underline-offset-2 hover:underline after:absolute after:-inset-x-1 after:-inset-y-3"
+              >
+                {questions} question{questions > 1 ? "s" : ""}
               </Link>
             )}
           </span>

@@ -6,9 +6,9 @@ import { scoreAction } from "@/app/actions";
 import { moneyFor } from "@/lib/format";
 import { atLeast, rankBids, type TenderView } from "@/lib/views";
 import { ActionButton } from "./ActionButton";
-import { BidGrid, StatusChips, scoreRows } from "./BidGrid";
+import { BidGrid, scoreRows } from "./BidGrid";
 import { CostBars } from "./CostBars";
-import { Button, Panel, Pill, SectionTitle, linkButton } from "./ui";
+import { Button, Panel, SectionTitle, linkButton } from "./ui";
 
 export function Compare({ t }: { t: TenderView }) {
   const eur = moneyFor(t.currency);
@@ -65,6 +65,7 @@ export function Compare({ t }: { t: TenderView }) {
   const revealed = delivered || !!winnerId;
   const flag = t.flags[0];
   const weights = t.criteria.map((c) => `${c.name.toLowerCase()} ${c.weightPct}%`).join(", ");
+  const judged = t.criteria.filter((c) => c.kind === "reviewed").map((c) => c.name.toLowerCase());
 
   return (
     <div className="grid gap-8">
@@ -121,33 +122,36 @@ export function Compare({ t }: { t: TenderView }) {
         </div>
 
         {delivered && (
-          <div className="grid border-t border-line sm:grid-cols-3 sm:divide-x sm:divide-line">
-            {cheapestQuote.overBudget ? (
-              <Callout tone="flag" title={`Bid ${cheapestQuote.letter} is over budget`}>
-                The lowest quote, {eur(cheapestQuote.goodsCents)}, lands at {eur(total(cheapestQuote))}.
-              </Callout>
-            ) : (
-              <Callout tone="ok" title="Every bid fits the budget">
-                The lowest quote lands at {eur(total(cheapestQuote))} delivered.
-              </Callout>
-            )}
-            {flag ? (
-              <Callout tone="warn" title={`Bids ${flag.letters.join(" and ")} look coordinated`}>
-                {flag.evidence[0]}.{" "}
-                <a href="#flag-evidence" className="font-medium text-ink underline underline-offset-2">
-                  See the evidence
-                </a>
-              </Callout>
-            ) : (
-              <Callout tone="ok" title="No coordinated bids">
-                No pair of bids matched on price, costs and wording.
-              </Callout>
-            )}
-            <Callout tone="ok" title={`Bid ${top.letter} is the best delivered offer`}>
-              {saving > 0 && <span className="num block text-2xl font-semibold text-ink">{eur(saving)} saved</span>}
-              Against the lowest quote, delivered{!hasVat ? "" : reclaimVat ? ", VAT reclaimed" : ", VAT included"}.
-            </Callout>
-          </div>
+          // Notes on the sheet, one ruled line each, the way a tender is annotated: not a row of KPI cards.
+          <ol className="fade-in grid border-t border-line px-5 text-sm">
+            <Note title={cheapestQuote.overBudget ? `Bid ${cheapestQuote.letter} is over budget` : "Every bid fits the budget"} tone={cheapestQuote.overBudget ? "flag" : undefined}>
+              {cheapestQuote.overBudget
+                ? `The lowest quote, ${eur(cheapestQuote.goodsCents)}, lands at ${eur(total(cheapestQuote))}.`
+                : `The lowest quote lands at ${eur(total(cheapestQuote))} delivered.`}
+            </Note>
+            <Note title={flag ? `Bids ${flag.letters.join(" and ")} look coordinated` : "No coordinated bids"} tone={flag ? "warn" : undefined}>
+              {flag ? (
+                <>
+                  {flag.evidence[0]}.{" "}
+                  <a href="#flag-evidence" className="font-medium text-ink underline underline-offset-2">
+                    See the evidence
+                  </a>
+                </>
+              ) : (
+                "No pair of bids matched on price, costs and wording."
+              )}
+            </Note>
+            <Note title={`Bid ${top.letter} is the best delivered offer`} stamp={!winnerId}>
+              {saving > 0 ? (
+                <>
+                  <span className="num font-semibold text-ink">{eur(saving)}</span> less than the lowest quote, delivered
+                </>
+              ) : (
+                "Against the lowest quote, delivered"
+              )}
+              {!hasVat ? "." : reclaimVat ? ", VAT reclaimed." : ", VAT included."}
+            </Note>
+          </ol>
         )}
       </Panel>
 
@@ -163,7 +167,17 @@ export function Compare({ t }: { t: TenderView }) {
             </Button>
           </div>
         )}
-        <BidGrid bids={t.bids} criteria={t.criteria} withVat={!reclaimVat} revealed={revealed} winnerId={winnerId} currency={t.currency} />
+        {/* Who scored what, said plainly: the AI scores the judgement calls (DECISIONS.md, "The AI scores the criteria code cannot"). */}
+        {revealed && judged.length > 0 && (
+          <p className="max-w-[80ch] text-sm text-muted">
+            Delivered cost, lead time and completeness are scored by code. {judged.join(" and ").replace(/^./, (ch) => ch.toUpperCase())}{" "}
+            {judged.length > 1 ? "are" : "is"} scored by the AI from each bid&apos;s description, photos and answers, seeing only a letter, never a
+            name or a price; with the AI off, a scripted score stands in, and the activity log says which. Every score has its reason below. A
+            model can judge close bids differently, so the ranking is a guide: you choose the winner.
+          </p>
+        )}
+        {/* Before the reveal the chart above already lists the quotes, so the table waits for delivered cost. */}
+        {revealed && <BidGrid bids={t.bids} criteria={t.criteria} withVat={!reclaimVat} revealed={revealed} winnerId={winnerId} currency={t.currency} />}
         {revealed && <ScoreReasons t={t} withVat={!reclaimVat} winnerId={winnerId} />}
       </section>
 
@@ -190,14 +204,16 @@ export function Compare({ t }: { t: TenderView }) {
 
           <Panel className="grid content-start gap-3" featured>
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base">{winnerId ? `Awarded: bid ${t.award!.letter}` : `Recommended: bid ${top.letter}`}</h3>
-              <Pill tone="ok">
-                <span className="num">{(top.total ?? 0).toFixed(1)}</span> / 100
-              </Pill>
+              <h3 className="text-base">
+                {winnerId ? `Awarded: bid ${t.award!.letter}` : `Recommended: bid ${top.letter}`}{" "}
+                <span className="num text-sm font-normal text-muted">{(top.total ?? 0).toFixed(1)} / 100</span>
+              </h3>
+              {/* One stamp per screen: the notes carry "Best delivered" until the award. */}
+              {winnerId && <span className="stamp">Awarded</span>}
             </div>
             <p className="text-sm text-muted">
-              Highest score inside the budget. PayPal will hold {eur(top.holdCents)} for the seller (goods and shipping) until delivery; you
-              pay the {eur(top.dutyCents)} import duty{hasVat ? ", import VAT" : ""} and broker fees at the border.
+              Highest score inside the budget. PayPal holds {eur(top.holdCents)} for the seller (goods and shipping) and pays it out step by
+              step as the order moves, starting with the deposit; you pay the {eur(top.dutyCents)} import duty{hasVat ? ", import VAT" : ""} and broker fees at the border.
             </p>
             <Link href={`/tender/${t.id}/award${winnerId ? "" : `?bid=${top.id}`}`} className={linkButton.primary}>
               {winnerId ? "Go to payments" : `Award to bid ${top.letter}`}
@@ -223,7 +239,6 @@ function ScoreReasons({ t, withVat, winnerId }: { t: TenderView; withVat: boolea
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">Bid {r.letter}</span>
                   <span className="num text-muted">{r.score.toFixed(1)} / 100</span>
-                  <StatusChips statuses={r.statuses} />
                 </span>
                 <span className="text-faint transition-transform group-open:rotate-180" aria-hidden="true">
                   ▾
@@ -235,7 +250,7 @@ function ScoreReasons({ t, withVat, winnerId }: { t: TenderView; withVat: boolea
                   return (
                     <div key={c.id} className="contents">
                       <dt className="text-muted">
-                        {c.name} ({c.weightPct}%)
+                        {c.name} ({c.weightPct}%){c.kind === "reviewed" && <span className="block text-xs text-faint">Judged by the AI, or a script when it is off</span>}
                       </dt>
                       <dd>
                         <span className="num">{s?.score ?? "–"}</span>. {s?.reason}
@@ -252,16 +267,14 @@ function ScoreReasons({ t, withVat, winnerId }: { t: TenderView; withVat: boolea
   );
 }
 
-function Callout({ tone, title, children }: { tone: "ok" | "warn" | "flag"; title: string; children: ReactNode }) {
-  const look = { ok: "text-ok", warn: "text-warn", flag: "text-flag" }[tone];
-  const dot = { ok: "bg-ok", warn: "bg-warn", flag: "bg-flag" }[tone];
+/** One annotation on the compare sheet: a short title and what it means, on a ruled line. */
+function Note({ title, tone, stamp = false, children }: { title: string; tone?: "warn" | "flag"; stamp?: boolean; children: ReactNode }) {
+  const look = tone ? { warn: "text-warn", flag: "text-flag" }[tone] : "text-ink";
   return (
-    <div className="fade-in grid content-start gap-1 border-t border-line p-5 first:border-t-0 sm:border-t-0">
-      <span className={`flex items-center gap-2 text-sm font-semibold ${look}`}>
-        <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />
-        {title}
-      </span>
-      <span className="text-sm text-muted">{children}</span>
-    </div>
+    <li className="grid items-baseline gap-x-6 gap-y-0.5 border-t border-line py-3 first:border-t-0 sm:grid-cols-[minmax(0,250px)_minmax(0,1fr)_auto]">
+      <span className={`font-semibold ${look}`}>{title}</span>
+      <span className="text-muted">{children}</span>
+      {stamp && <span className="stamp justify-self-start sm:justify-self-end">Best delivered</span>}
+    </li>
   );
 }

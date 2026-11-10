@@ -1,9 +1,10 @@
 "use client";
 
 import { AgGridReact, type CustomCellRendererProps } from "ag-grid-react";
+import { nameGrid } from "@/lib/grid";
 import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef } from "ag-grid-community";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Transaction } from "@/lib/cashflow";
 import { dayTime, money } from "@/lib/format";
 import { Pill } from "./ui";
@@ -54,6 +55,7 @@ function TenderCell({ data }: CustomCellRendererProps<Transaction>) {
 /** Every hold, payment and release, newest first, from the event log. Sort any column, or search. */
 export function TransactionsGrid({ txs, title, showSeller }: { txs: Transaction[]; title: string; showSeller: boolean }) {
   const [search, setSearch] = useState("");
+  const gridBox = useRef<HTMLDivElement>(null);
 
   const cols = useMemo<ColDef<Transaction>[]>(
     () => [
@@ -115,7 +117,7 @@ export function TransactionsGrid({ txs, title, showSeller }: { txs: Transaction[
               </li>
             ))}
           </ul>
-          <div className="hidden sm:block">
+          <div ref={gridBox} className="hidden sm:block">
             <AgGridReact<Transaction>
               theme={theme}
               rowData={txs}
@@ -128,6 +130,8 @@ export function TransactionsGrid({ txs, title, showSeller }: { txs: Transaction[
               paginationPageSize={10}
               paginationPageSizeSelector={false}
               defaultColDef={{ sortable: true, resizable: true, suppressMovable: true }}
+              tabToNextCell={() => false}
+              onGridReady={() => nameGrid(gridBox.current, title)}
             />
           </div>
         </>

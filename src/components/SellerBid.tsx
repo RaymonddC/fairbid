@@ -8,6 +8,7 @@ import type { SellerTenderView } from "@/lib/views";
 import { PageHeader } from "./PageHeader";
 import { PhotoPicker, PhotoStrip } from "./Photos";
 import { Button, Panel, Pill } from "./ui";
+import { criterionKind } from "@/lib/scoring";
 
 type Lang = "en" | "id";
 
@@ -48,6 +49,11 @@ const copy = {
     feesLine: "Broker fees",
     delivered: "Delivered cost",
     paid: "Paid to you through PayPal",
+    ifWin: "If you win, PayPal pays you",
+    sealedClosed: (at: string) => `Sealed ${at}. Bidding has closed and the buyer is comparing delivered costs. The result will show here.`,
+    waitingFor: (n: number) => (n === 1 ? "1 question is waiting for your answer." : `${n} questions are waiting for your answer.`),
+    addPhoto: "Add photo",
+    deadline: (d: string) => `Delivery deadline counted from the close: ${d}.`,
     within: (b: string) => `Within the ${b} budget`,
     over: (b: string) => `Over the ${b} budget`,
     vatNote: "Import VAT is the buyer's and is shown to them separately.",
@@ -82,7 +88,7 @@ const copy = {
     price: (q: number) => `Harga untuk ${q} buah (EUR)`,
     each: "per buah",
     ship: "Ongkos kirim sampai tujuan (EUR)",
-    shipHint: "Door to door, semua rute",
+    shipHint: "Sampai ke pintu, semua rute",
     fees: "Biaya broker dan dokumen (EUR)",
     feesHint: "Dibayar pembeli saat impor; dihitung supaya penawaran adil dibandingkan",
     days: "Lama pengiriman (hari)",
@@ -98,6 +104,11 @@ const copy = {
     feesLine: "Biaya broker",
     delivered: "Total sampai tujuan",
     paid: "Dibayar ke Anda lewat PayPal",
+    ifWin: "Jika menang, PayPal membayar Anda",
+    sealedClosed: (at: string) => `Disegel ${at}. Penawaran sudah ditutup dan pembeli sedang membandingkan biaya sampai tujuan. Hasilnya akan muncul di sini.`,
+    waitingFor: (n: number) => `${n} pertanyaan menunggu jawaban Anda.`,
+    addPhoto: "Tambah foto",
+    deadline: (d: string) => `Batas pengiriman dihitung dari penutupan: ${d}.`,
     within: (b: string) => `Masih di bawah anggaran ${b}`,
     over: (b: string) => `Melebihi anggaran ${b}`,
     vatNote: "PPN impor ditanggung pembeli dan ditampilkan terpisah.",
@@ -119,13 +130,14 @@ const copy = {
 
 const euros = (cents: number | undefined) => (cents === undefined ? "" : String(Math.round(cents / 100)));
 
-export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: string }) {
+export function SellerBid({ t }: { t: SellerTenderView }) {
   const eur = moneyFor(t.currency);
   // Field labels name the tender's currency: (EUR) or (USD).
   const cur = (label: string) => label.replace("(EUR)", `(${t.currency})`);
   const [lang, setLang] = useState<Lang>("en");
   const c = copy[lang];
   const mine = t.myBid;
+  const waiting = t.questions.filter((q) => !q.myReply).length;
   const [total, setTotal] = useState(euros(mine?.goodsCents));
   const [shipping, setShipping] = useState(euros(mine?.shippingCents));
   const [fees, setFees] = useState(euros(mine?.feesCents));
@@ -185,12 +197,25 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
       else notifyError(r.error);
     });
 
+  const questionsPanel = (
+    <Panel className="grid gap-3">
+      <h3 className="font-semibold">{c.questions}</h3>
+      {waiting > 0 && <p className="text-sm font-medium text-warn">{c.waitingFor(waiting)}</p>}
+      {t.questions.length === 0 && <p className="text-sm text-muted">{c.none}</p>}
+      {t.questions.map((q) => (
+        <Question key={q.id} q={q} c={c} />
+      ))}
+    </Panel>
+  );
+
   return (
     <div lang={lang}>
       <PageHeader
         crumbs={[{ href: "/", label: lang === "en" ? "Open tenders" : "Tender terbuka" }]}
         title={t.title}
-        description={`${sellerName}: ${c.lead}`}
+        description={c.lead}
+        sheet
+        reference={`Ref ${t.id.split("-").pop()!.slice(-6)}`}
         actions={
           <div className="flex rounded-lg bg-surface p-1 text-sm ring-1 ring-inset ring-line" role="group" aria-label="Language">
             {(["en", "id"] as const).map((l) => (
@@ -210,6 +235,8 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="grid content-start gap-6">
+          {/* A question waiting for her is the one thing she can still do, so it comes first. */}
+          {waiting > 0 && questionsPanel}
           {t.won && (
             <Panel className="grid gap-3" featured>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -260,7 +287,7 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
             </div>
             <p className="text-sm text-muted">
               {t.spec.quantity} × {t.spec.item}, {t.spec.deliverTo}, {t.spec.deliveryDays} days. {c.scored}{" "}
-              {t.criteria.map((cr) => `${cr.name.toLowerCase()} ${cr.weightPct}%`).join(", ")}. {c.early}
+              {t.criteria.map((cr) => `${criterionName(cr.name, lang)} ${cr.weightPct}%`).join(", ")}. {c.early}
             </p>
             {t.photos.length > 0 && (
               <div className="grid gap-2 border-t border-line pt-3">
@@ -272,7 +299,12 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
 
           <Panel className="grid gap-5">
             <h2 className="text-lg">{c.title}</h2>
-            <fieldset disabled={!t.open || pending} className="grid gap-5 disabled:opacity-70">
+            {!t.open && mine && !t.won && <p className="rounded-lg bg-dye-soft p-3 text-sm">{c.sealedClosed(dayTime(mine.submittedAt))}</p>}
+            {/* Once bidding closes the bid reads as a record, not a form. */}
+            <fieldset
+              disabled={!t.open || pending}
+              className="grid gap-5 [&:disabled_input]:border-line [&:disabled_input]:bg-canvas [&:disabled_input]:text-muted"
+            >
               <div className="grid gap-2">
                 <label htmlFor="notes" className="text-sm font-medium">
                   {c.selling}
@@ -302,7 +334,7 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className={`flex flex-wrap items-center gap-2 ${t.open ? "" : "hidden"}`}>
                     <button type="button" onClick={classify} disabled={classifying} className="min-h-9 rounded-md px-1 text-xs font-medium text-dye underline underline-offset-4 disabled:opacity-60">
                       {classifying ? (lang === "en" ? "Checking…" : "Memeriksa…") : lang === "en" ? "Check the code for what I wrote" : "Periksa kode untuk produk saya"}
                     </button>
@@ -323,7 +355,16 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                 </div>
               </div>
 
-              <PhotoPicker photos={photos} onChange={setPhotos} label={c.photos} hint={c.photosHint} />
+              {t.open ? (
+                <PhotoPicker photos={photos} onChange={setPhotos} label={c.photos} hint={c.photosHint} addLabel={c.addPhoto} />
+              ) : (
+                photos.length > 0 && (
+                  <div className="grid gap-2">
+                    <h3 className="text-sm font-medium">{c.photos}</h3>
+                    <PhotoStrip photos={photos} label={c.photos} />
+                  </div>
+                )
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
@@ -372,24 +413,29 @@ export function SellerBid({ t, sellerName }: { t: SellerTenderView; sellerName: 
                 <dt className="font-semibold">{c.delivered}</dt>
                 <dd className="num font-semibold">{goods ? eur(delivered) : "—"}</dd>
               </div>
-              <Line label={c.paid} value={goods ? eur(goods + ship) : "—"} />
+              <Line label={t.won ? c.paid : c.ifWin} value={goods ? eur(goods + ship) : "—"} />
             </dl>
             {goods > 0 && <Pill tone={delivered <= t.budgetCents ? "ok" : "flag"}>{delivered <= t.budgetCents ? c.within(budget) : c.over(budget)}</Pill>}
             <p className="text-xs text-muted">{c.vatNote}</p>
           </Panel>
 
-          <Panel className="grid gap-3">
-            <h3 className="font-semibold">{c.questions}</h3>
-            {t.questions.length === 0 && <p className="text-sm text-muted">{c.none}</p>}
-            {t.questions.map((q) => (
-              <Question key={q.id} q={q} c={c} />
-            ))}
-          </Panel>
+          {waiting === 0 && questionsPanel}
         </div>
       </div>
-      <p className="mt-6 text-xs text-faint">Delivery deadline counted from the close: {day(new Date(new Date(t.closesAt).getTime() + t.spec.deliveryDays * 86_400_000).toISOString())}.</p>
+      <p className="mt-6 text-xs text-faint">{c.deadline(day(new Date(new Date(t.closesAt).getTime() + t.spec.deliveryDays * 86_400_000).toISOString()))}</p>
     </div>
   );
+}
+
+/** A published criterion in the seller's language. The kinds the code scores have fixed names; a reviewed criterion
+ * keeps the buyer's own words unless it is one we know. */
+function criterionName(name: string, lang: Lang): string {
+  if (lang === "en") return name.toLowerCase();
+  const kind = criterionKind(name);
+  if (kind === "cost") return "biaya sampai tujuan";
+  if (kind === "lead_time") return "waktu pengiriman";
+  if (kind === "completeness") return "kelengkapan";
+  return /handmade/i.test(name) ? "bukti buatan tangan" : name.toLowerCase();
 }
 
 function Question({ q, c }: { q: SellerTenderView["questions"][number]; c: (typeof copy)["en"] }) {

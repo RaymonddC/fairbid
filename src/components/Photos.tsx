@@ -32,12 +32,14 @@ export function PhotoPicker({
   max = 4,
   label,
   hint,
+  addLabel = "Add photo",
 }: {
   photos: string[];
   onChange: (photos: string[]) => void;
   max?: number;
   label: string;
   hint: string;
+  addLabel?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -109,7 +111,7 @@ export function PhotoPicker({
           >
             <span className="grid justify-items-center gap-1">
               <CameraIcon />
-              Add photo
+              {addLabel}
             </span>
           </button>
         )}

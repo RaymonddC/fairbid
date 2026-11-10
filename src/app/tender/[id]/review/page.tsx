@@ -3,6 +3,8 @@ import { Clarifications } from "@/components/Clarifications";
 import { tenderView } from "@/lib/cached";
 import { getUser } from "@/lib/session";
 
+export const metadata = { title: "Questions · FairBid" };
+
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   const { id } = await params;

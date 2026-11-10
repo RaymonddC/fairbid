@@ -37,7 +37,7 @@ Telegram is verified live (question to the seller's chat, reply in the inbox and
 | Nobody sees a bid before close | `isSealed` (`src/lib/tender.ts`); while sealed, `getTenderView` builds no bid views at all, only the count (`src/lib/tender-data.ts`) |
 | No late bids | `canSubmitBid` checks the state and the closing time on the server (`src/lib/tender.ts`) |
 | Bids compared on what the buyer really pays | Goods, shipping, duty, VAT and fees in integer cents (`src/lib/landed.ts`) |
-| Code ranks, the AI only explains | Scores and collusion pairs are computed in code (`src/lib/scoring.ts`); an LLM writes reasons and questions, so two runs cannot rank bids differently |
+| Code ranks; the AI scores only what code cannot | Delivered cost, cost, lead-time and completeness scores, the weighted ranking and collusion pairs are computed in code (`src/lib/scoring.ts`). The AI scores reviewed criteria such as handmade proof, blind and with a reason, so two runs can rank close bids differently; the app says so, and the buyer decides |
 | A collusion flag never removes a bid | `findCoordinatedPairs` only flags a pair for the buyer to look at (`src/lib/scoring.ts`) |
 | Questions cannot leak an early hint | `askQuestion` refuses while bidding is open, and after a winner is chosen (`src/lib/workflow.ts`) |
 | No hold has to outlive PayPal's 29 days | Orders of up to 28 days get one hold. Longer orders, up to 180 days, are paid in phases: each phase's steps fall due within 28 days, and each phase gets its own hold, approved by the buyer when it starts (`planMilestones`, `nextStep`, `src/lib/phases.ts`). A hold that lapses with money owed can be replaced, never stretched |

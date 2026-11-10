@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { linkButton } from "@/components/ui";
 import type { ReactNode } from "react";
 import { Meta, PageHeader } from "@/components/PageHeader";
 import { ResetDemo } from "@/components/ResetDemo";
+import { ActivityLink } from "@/components/ActivityLink";
 import { StatusPill } from "@/components/StatusPill";
 import { Stepper } from "@/components/Stepper";
 import { tenderView } from "@/lib/cached";
@@ -39,14 +39,14 @@ export default async function TenderLayout({ children, params }: { children: Rea
       <PageHeader
         crumbs={[{ href: "/", label: "Tenders" }]}
         title={t.title}
+        sheet
+        reference={`Ref ${t.id.split("-").pop()!.slice(-6)}`}
         actions={
-          <Link href={`/tender/${t.id}/activity`} className={linkButton.secondary}>
-            Activity log
-          </Link>
+          <ActivityLink href={`/tender/${t.id}/activity`} />
         }
         media={
           photo ? (
-            <span className="hidden h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl ring-1 ring-line sm:block">
+            <span className="hidden h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-line sm:block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={photo} alt="" className="h-full w-full object-cover" />
             </span>
@@ -68,8 +68,9 @@ export default async function TenderLayout({ children, params }: { children: Rea
           tenderId={t.id}
           state={[
             atLeast(t.status, "CLOSED") ? "done" : "todo",
-            !atLeast(t.status, "CLOSED") ? "todo" : t.waitingReplies > 0 && !atLeast(t.status, "SCORED") ? "progress" : "done",
-            atLeast(t.status, "AWARDED") ? "done" : "todo",
+            // Replies still waiting keep the step open, even once the bids are scored: a late reply is still kept.
+            !atLeast(t.status, "CLOSED") ? "todo" : t.waitingReplies > 0 ? "progress" : "done",
+            atLeast(t.status, "SCORED") ? "done" : "todo",
             t.status === "COMPLETE" ? "done" : "todo",
           ]}
           waiting={t.waitingReplies}
@@ -77,7 +78,7 @@ export default async function TenderLayout({ children, params }: { children: Rea
       </PageHeader>
       <div className="grid gap-6">
         {expiring && (
-          <p role="alert" className="notice flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 !border-l-flag p-4 text-sm">
+          <p role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[4px] border border-flag/30 bg-flag-soft p-4 text-sm">
             <span>
               <strong className="font-medium">The PayPal hold ends {day(expiring.at)}</strong>, in {expiring.days} day{expiring.days === 1 ? "" : "s"}.{" "}
               {eur(expiring.leftCents)} is still unpaid from it. After that date it can no longer be captured; you can place a new hold then.
@@ -88,7 +89,7 @@ export default async function TenderLayout({ children, params }: { children: Rea
           </p>
         )}
         {needsHold && (
-          <p role="status" className="notice flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 !border-l-warn p-4 text-sm">
+          <p role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-[4px] border border-warn/30 bg-warn-soft p-4 text-sm">
             <span>
               <strong className="font-medium">
                 {needsHold.replacing ? `The hold for phase ${needsHold.phase} lapsed.` : `Phase ${needsHold.phase} is not held yet.`}

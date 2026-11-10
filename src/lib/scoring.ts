@@ -1,6 +1,7 @@
-// Scoring and the collusion check. Pure and deterministic: the same bids always
-// rank the same way (DECISIONS.md, "Deterministic where it matters"). The LLM,
-// once it lands, only writes the reasons for the "reviewed" criteria.
+// Scoring and the collusion check. Pure and deterministic: the same scores always
+// rank the same way (DECISIONS.md, "Deterministic where it matters"). The "reviewed"
+// criteria are scored by the AI, blind and with a reason (DECISIONS.md, "The AI scores
+// the criteria code cannot"); everything else here is code.
 
 export type CriterionKind = "cost" | "lead_time" | "completeness" | "reviewed";
 

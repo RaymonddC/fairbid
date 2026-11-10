@@ -15,8 +15,10 @@ These carry the money and fairness story. Each one is a deliberate decision in `
   (`src/lib/phases.ts`); a lapsed hold is replaced, never extended. Run `npm run check:phases` after touching money steps.
 - **The first payment is a non-refundable deposit the buyer agreed to.** `startAward` refuses without `depositAccepted`.
 - **Sealed bids stay on the server until close.** `isSealed` in `src/lib/tender.ts`; only the count leaves before.
-- **Code ranks, the AI explains.** Delivered cost (`src/lib/landed.ts`), scores (`src/lib/scoring.ts`) and
-  collusion pairs are computed in code. An LLM writes reasons and questions only.
+- **Code ranks; the AI scores only what code cannot.** Delivered cost (`src/lib/landed.ts`), the cost, lead-time and
+  completeness scores, the weighted total and ranking (`src/lib/scoring.ts`) and collusion pairs are computed in code.
+  The AI scores the reviewed criteria (such as handmade proof) blind, each with a reason, and writes questions and
+  reasons; the app says so where the scores show (DECISIONS.md, "The AI scores the criteria code cannot").
 - **A collusion flag asks a person to look.** It never removes a bid.
 - **The hash-chained event log** (`src/lib/audit.ts`, `audit-store.ts`): append only, never edit or delete events.
 - **Identity comes from the session**, never from an action's arguments. A server action is a public endpoint.

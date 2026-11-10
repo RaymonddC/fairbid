@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { Panel, Pill } from "@/components/ui";
+import { Panel } from "@/components/ui";
 import { verifyChain } from "@/lib/audit";
 import { getEvents } from "@/lib/audit-store";
 import { tenderView } from "@/lib/cached";
@@ -47,13 +47,20 @@ function describe(
     case "tender.scored":
       return {
         title: "Bids priced at delivered cost and scored",
-        detail: p.judgedBy === "model" ? "Judged criteria scored blind by the AI." : p.judgedBy === "fixture" ? "Judged criteria from scripted scores (no AI key)." : undefined,
+        detail:
+          p.judgedBy === "model"
+            ? "Cost, lead time and completeness scored by code; the judged criteria scored blind by the AI."
+            : p.judgedBy === "mixed"
+              ? "Cost, lead time and completeness scored by code; the judged criteria partly by the AI, partly from scripted scores."
+              : p.judgedBy === "fixture"
+                ? "Cost, lead time and completeness scored by code; the judged criteria from scripted scores (no AI key)."
+                : "Scored by code.",
       };
     case "review.completed": {
       const q = (p.questions ?? {}) as { count?: number; source?: string };
       return {
         title: "AI review finished",
-        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; the AI only writes.`,
+        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; questions cannot change a price.`,
       };
     }
     case "award.started": {
@@ -141,10 +148,6 @@ function describe(
   }
 }
 
-const GOOD_NEWS = new Set(["award.authorized", "hold.authorized", "milestone.paid", "paypal.order.approved", "paypal.hold.confirmed", "paypal.payment.completed"]);
-const tone = (kind: string) =>
-  GOOD_NEWS.has(kind) ? "bg-ok" : kind.startsWith("review") || kind.startsWith("paypal.") || kind === "milestone.declined" ? "bg-warn" : "bg-dye";
-
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await getUser();
   const { id } = await params;
@@ -164,30 +167,33 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <LiveRefresh />
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base">Everything that happened, in order</h2>
-          <Pill tone="ok" dot>
-            Updates live
-          </Pill>
+          <span className="text-xs text-muted">Updates live</span>
         </div>
         {events.length === 0 ? (
           <p className="text-sm text-muted">Nothing recorded yet.</p>
         ) : (
-          <ol className="relative grid gap-4 border-l border-line pl-5">
+          // A ruled ledger: one numbered line per entry, its time, what happened, and the hash that seals it.
+          <ol className="grid border-t border-line-strong">
             {events.map((e) => {
               const d = describe(e.kind, (e.payload ?? {}) as Payload, letterOf, moneyFor(t.currency));
               return (
-                <li key={e.seq} className="relative grid gap-0.5">
-                  <span className={`absolute -left-[25px] top-1.5 h-2 w-2 rounded-full ring-4 ring-surface ${tone(e.kind)}`} aria-hidden="true" />
-                  <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <li
+                  key={e.seq}
+                  className="grid gap-x-4 gap-y-0.5 border-b border-line py-3 sm:grid-cols-[36px_104px_minmax(0,1fr)_auto] sm:items-baseline"
+                >
+                  <span className="ref text-xs text-faint">#{e.seq}</span>
+                  <time className="text-xs text-muted" dateTime={e.at}>
+                    {dayTime(e.at)}
+                  </time>
+                  <span className="grid gap-0.5">
                     <span className="text-sm font-medium">{d.title}</span>
-                    <time className="text-xs text-faint" dateTime={e.at}>
-                      {dayTime(e.at)}
-                    </time>
+                    {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
+                    {e.actor.startsWith("agent:") && <span className="text-xs text-dye">By a seller agent, over MCP</span>}
+                    {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
                   </span>
-                  {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
-                  {e.actor.startsWith("agent:") && <span className="text-xs text-dye">By a seller agent, over MCP</span>}
-                  {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
-                  <span className="ref text-[11px] text-faint">
-                    #{e.seq} {e.actor}, hash {e.hash.slice(0, 10)}…
+                  <span className="ref grid text-[11px] text-faint sm:text-right">
+                    <span>{e.actor}</span>
+                    <span>{e.hash.slice(0, 10)}</span>
                   </span>
                 </li>
               );
@@ -200,9 +206,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <Panel className="grid gap-2">
           <h3 className="text-sm">Tamper check</h3>
           {check.intact ? (
-            <Pill tone="ok">Chain intact, {events.length} events</Pill>
+            <p className="text-sm font-medium text-ok">Chain intact, {events.length} events</p>
           ) : (
-            <Pill tone="flag">Broken at event #{check.firstBrokenSeq}</Pill>
+            <p className="text-sm font-medium text-flag">Broken at event #{check.firstBrokenSeq}</p>
           )}
           <p className="text-sm text-muted">
             Each event&apos;s hash covers its content and the one before it, so changing or removing any event breaks every hash after it.

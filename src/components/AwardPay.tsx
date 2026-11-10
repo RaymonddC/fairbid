@@ -29,7 +29,8 @@ export function AwardPay({ t, chosenBidId }: { t: TenderView; chosenBidId?: stri
         </Panel>
       );
     }
-    return <AwardStart t={t} bidId={chosenBidId} />;
+    // Keyed by the bid, so choosing another one starts its agreement afresh.
+    return <AwardStart key={chosenBidId ?? "recommended"} t={t} bidId={chosenBidId} />;
   }
   return <Payments t={t} award={t.award!} />;
 }
@@ -105,6 +106,38 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
             </ol>
           </div>
         )}
+        {/* The buyer decides: the recommendation is a default, not the only choice. */}
+        <div className="grid gap-2 border-t border-line pt-3">
+          <h3 className="text-sm">Award a different bid</h3>
+          <ul className="grid text-sm">
+            {ranked
+              .filter((b) => b.id !== bid.id)
+              .map((b) => (
+                <li key={b.id}>
+                  <Link
+                    href={`/tender/${t.id}/award?bid=${b.id}`}
+                    replace
+                    scroll={false}
+                    className="flex min-h-11 items-center justify-between gap-3 border-b border-line text-muted last:border-b-0 hover:text-ink"
+                  >
+                    <span>
+                      <span className="font-medium text-ink">Bid {b.letter}</span>, {countryName(b.country)}
+                      {b.flagged ? ", flagged as coordinated" : ""}
+                      {b.deliveredCents > t.budgetCents ? ", over budget" : ""}
+                    </span>
+                    <span className="num">
+                      {eur(b.deliveredCents)} · {(b.total ?? 0).toFixed(1)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+          {!recommended && (
+            <Link href={`/tender/${t.id}/award`} replace scroll={false} className="text-sm font-medium text-dye underline underline-offset-4">
+              Back to the recommended bid, {ranked[0].letter}
+            </Link>
+          )}
+        </div>
       </Panel>
 
       <Panel className="grid content-start gap-4">

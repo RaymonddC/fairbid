@@ -97,7 +97,6 @@ export function Clarifications({ t }: { t: TenderView }) {
                   <h2 className="text-base">{q.topic}</h2>
                   <p className="text-sm text-muted">Sent to bid{q.sentTo.length > 1 ? "s" : ""} {q.sentTo.join(", ")}. Replies cannot change a price.</p>
                 </div>
-                <Pill>Price locked</Pill>
               </div>
 
               <div className="grid gap-3 px-5" aria-live="polite">
