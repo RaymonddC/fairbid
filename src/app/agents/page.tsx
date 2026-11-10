@@ -32,6 +32,11 @@ const TOOLS: { name: string; does: string; input: string }[] = [
     input: "tender_id",
   },
   {
+    name: "get_debrief",
+    does: "If your bid lost, once the award is final: your rank, your score on each criterion against the winning bid's, the points each one cost you, and both delivered costs. Never the winner's name, price lines or product details.",
+    input: "tender_id",
+  },
+  {
     name: "answer_clarification",
     does: "Answers a question the buyer sent about your bid. An answer can explain; it can never change your price.",
     input: "clarification_id, body (up to 1,000 characters)",

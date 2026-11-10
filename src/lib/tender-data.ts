@@ -3,6 +3,7 @@
 
 import { db } from "./db";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
+import { buildDebrief } from "./debrief";
 import { pickTariff, type Tariff } from "./duty";
 import { ratesFor } from "./duty-lookup";
 import { holdCents, landedCost } from "./landed";
@@ -289,6 +290,15 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
   const cheapestQuote = [...bids].sort((a, b) => a.goodsCents - b.goodsCents)[0];
   const winnerView = award ? bids.find((b) => b.id === award!.bidId) : undefined;
 
+  // Only once the award is final: before the hold is approved, the buyer can still choose another bid.
+  const debriefs =
+    award && atLeast(status, "AWARDED")
+      ? bids.flatMap((b) => {
+          const debrief = buildDebrief({ bids, criteria, myBidId: b.id, winnerBidId: award!.bidId, budgetCents: t.budgetCents, currency: t.currency });
+          return debrief ? [{ bidId: b.id, letter: b.letter, debrief }] : [];
+        })
+      : [];
+
   return {
     id: t.id,
     buyerId: t.buyerId,
@@ -311,6 +321,7 @@ export async function getTenderView(id: string): Promise<TenderView | null> {
     award,
     waitingReplies: clarifications.reduce((n, c) => n + c.waiting.length, 0),
     savedCents: cheapestQuote && winnerView ? cheapestQuote.deliveredCents - winnerView.deliveredCents : null,
+    debriefs,
   };
 }
 
@@ -323,6 +334,9 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
   const tariff = await tariffFor(mine?.hsCode ?? "6302", t.destinationCountry, mine?.seller.country ?? null, { demo: t.id === DEMO_TENDER_ID });
   const won = t.award && mine && t.award.bidId === mine.id ? t.award : null;
   const milestones = won ? milestoneViews(won) : [];
+  // A losing seller is told why, from the same numbers the buyer ranked on.
+  const lost = !!t.award && !!mine && !won && atLeast(status, "AWARDED");
+  const debrief = lost ? ((await getTenderView(id))?.debriefs.find((d) => d.bidId === mine!.id)?.debrief ?? null) : null;
 
   return {
     id: t.id,
@@ -369,6 +383,7 @@ export async function getSellerTenderView(id: string, sellerId: string): Promise
           return { holdCents: won.holdCents, paidCents: pay.paidCents, heldCents: pay.heldCents, phases: pay.phases, next: pay.next, complete: pay.complete, endedAt: pay.endedAt, milestones };
         })()
       : null,
+    debrief,
   };
 }
 

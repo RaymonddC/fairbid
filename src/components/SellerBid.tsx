@@ -8,9 +8,7 @@ import type { SellerTenderView } from "@/lib/views";
 import { PageHeader } from "./PageHeader";
 import { PhotoPicker, PhotoStrip } from "./Photos";
 import { Button, Panel, Pill } from "./ui";
-import { criterionKind } from "@/lib/scoring";
-
-type Lang = "en" | "id";
+import { Debrief, criterionName, type Lang } from "./Debrief";
 
 type HsState = { code: string; description: string; confidence: number; alternatives: { hsCode: string; description: string }[]; gate: number };
 
@@ -275,6 +273,11 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
               </ol>
             </Panel>
           )}
+          {t.debrief && (
+            <Panel className="grid gap-3" featured>
+              <Debrief d={t.debrief} lang={lang} />
+            </Panel>
+          )}
 
           <Panel className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -299,7 +302,7 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
 
           <Panel className="grid gap-5">
             <h2 className="text-lg">{c.title}</h2>
-            {!t.open && mine && !t.won && <p className="rounded-lg bg-dye-soft p-3 text-sm">{c.sealedClosed(dayTime(mine.submittedAt))}</p>}
+            {!t.open && mine && !t.won && !t.debrief && <p className="rounded-lg bg-dye-soft p-3 text-sm">{c.sealedClosed(dayTime(mine.submittedAt))}</p>}
             {/* Once bidding closes the bid reads as a record, not a form. */}
             <fieldset
               disabled={!t.open || pending}
@@ -434,15 +437,6 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
 
 /** A published criterion in the seller's language. The kinds the code scores have fixed names; a reviewed criterion
  * keeps the buyer's own words unless it is one we know. */
-function criterionName(name: string, lang: Lang): string {
-  if (lang === "en") return name.toLowerCase();
-  const kind = criterionKind(name);
-  if (kind === "cost") return "biaya sampai tujuan";
-  if (kind === "lead_time") return "waktu pengiriman";
-  if (kind === "completeness") return "kelengkapan";
-  return /handmade/i.test(name) ? "bukti buatan tangan" : name.toLowerCase();
-}
-
 function Question({ q, c }: { q: SellerTenderView["questions"][number]; c: (typeof copy)["en"] }) {
   const [reply, setReply] = useState("");
   const [pending, start] = useTransition();

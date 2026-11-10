@@ -10,6 +10,7 @@ import { milestoneAmounts } from "@/lib/tender";
 import { atLeast, rankBids, type AwardView, type CaptureView, type HoldView, type MilestoneView, type TenderView } from "@/lib/views";
 import { notifySuccess } from "./ActionButton";
 import { Confirm } from "./Confirm";
+import { Debrief } from "./Debrief";
 import { PayPalButton } from "./PayPalButton";
 import { PhotoStrip } from "./Photos";
 import { Panel, Pill, SectionTitle } from "./ui";
@@ -437,6 +438,39 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
           </Panel>
         </aside>
       </div>
+
+      {t.debriefs.length > 0 && (
+        <section className="grid gap-3" aria-labelledby="debrief-title">
+          <SectionTitle id="debrief-title" aside={`${t.debriefs.length} seller${t.debriefs.length === 1 ? "" : "s"} told why`}>
+            What the other sellers see
+          </SectionTitle>
+          <p className="max-w-[70ch] text-sm text-muted">
+            Every seller who lost now sees why, on their own bid page and through their agent: their rank, their score on each of your criteria
+            against the winning bid, and both delivered costs. They never see the winner&apos;s name, price lines or the reasons written about the
+            winning product.
+          </p>
+          <div className="grid gap-3">
+            {t.debriefs.map(({ bidId, letter, debrief }) => (
+              <details key={bidId} className="notice group rounded-xl p-4 [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 font-medium">
+                  <span>
+                    Bid {letter}, {countryName(t.bids.find((b) => b.id === bidId)?.country ?? "")}: ranked {debrief.rank} of {debrief.of}
+                  </span>
+                  <span className="text-sm font-normal text-muted">
+                    {debrief.lostOn.length ? `Lost most on ${debrief.lostOn.map((n) => n.toLowerCase()).join(" and ")}` : "Close behind"}
+                    <span className="ml-2 inline-block transition-transform group-open:rotate-90" aria-hidden>
+                      ›
+                    </span>
+                  </span>
+                </summary>
+                <div className="mt-4 border-t border-line pt-4">
+                  <Debrief d={debrief} heading={false} />
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       {pending && (
         <Confirm

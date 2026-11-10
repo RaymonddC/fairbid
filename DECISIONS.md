@@ -96,3 +96,8 @@ Duty depends on the customs code and on where the goods are made: the same cotto
 
 A bid with no checked rate (a 4-digit code, Easyship down, no token) is still priced, on the closest broader rate, so ranking always runs, and every screen that shows its price says "Borrowed rate" (R's call, 10 Nov 2026). The demo tender always uses its seeded 12% and says "Demo rate", so the demo tells the same story every time; the open question records what real rates would change.
 
+## Every losing seller is told why
+
+Once the award is final (the hold is approved, status AWARDED), each losing seller sees a debrief built in code from the same scores and delivered costs the buyer ranked on (`src/lib/debrief.ts`): their rank, their weighted total against the winner's, their score on each criterion against the winning bid's with the weighted points it cost them, their own reasons, and both delivered costs. Public procurement already works this way for rejected bidders; small buyers rarely do it, and a maker who never learns why they lost cannot price better next time. Agents get the same through `get_debrief` (R's call, 10 Nov 2026).
+
+What stays private: the winning seller's name, their price lines (goods, shipping, fees) and the reasons written about their product. A loser learns the winner's delivered total and scores, not their quote. If the buyer awarded a bid that did not rank first, the debrief says so: FairBid ranks, the buyer decides. Before the hold is approved there is no debrief, because the buyer can still choose another bid.

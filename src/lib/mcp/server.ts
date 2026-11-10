@@ -180,6 +180,52 @@ export function buildSellerServer(sellerId: string): McpServer {
                 : null,
             deposit: v.won.milestones[0] && { milestone: v.won.milestones[0].name, amount: units(v.won.milestones[0].plannedCents), non_refundable: true },
           },
+          // Lost, and the award is final: get_debrief says why.
+          debrief_available: v.debrief !== null,
+        };
+      }),
+  );
+
+  server.registerTool(
+    "get_debrief",
+    {
+      title: "Why my bid lost",
+      description:
+        "After the award, if your bid did not win: your rank, your score on each criterion against the winning bid's, the weighted points you lost on each, both delivered costs, and a short summary. Use it to price your next bid. The winning seller's name, price lines and product details are never shown.",
+      inputSchema: { tender_id: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    ({ tender_id }) =>
+      guarded(async () => {
+        const v = await getSellerTenderView(tender_id, sellerId);
+        if (!v) throw new StepError("Tender not found.");
+        if (!v.myBid) throw new StepError("You did not bid on this tender.");
+        if (v.won) throw new StepError("Your bid won this tender: see get_my_bid_status for payments.");
+        const d = v.debrief;
+        if (!d) throw new StepError("No debrief yet: it is ready once the buyer's award is final.");
+        return {
+          summary: d.summary,
+          rank: d.rank,
+          of: d.of,
+          winner_rank: d.winnerRank,
+          my_total: d.myTotal,
+          winner_total: d.winnerTotal,
+          currency: d.currency,
+          my_delivered_cost: units(d.myDeliveredCents),
+          winner_delivered_cost: units(d.winnerDeliveredCents),
+          winner_country: d.winnerCountry,
+          budget: units(d.budgetCents),
+          over_budget: d.overBudget,
+          criteria: d.lines.map((l) => ({
+            name: l.name,
+            weight_pct: l.weightPct,
+            my_score: l.myScore,
+            winner_score: l.winnerScore,
+            points_behind: l.pointsBehind,
+            why_my_score: l.myReason,
+          })),
+          lost_most_on: d.lostOn,
+          beat_winner_on: d.beatOn,
         };
       }),
   );

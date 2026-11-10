@@ -1,6 +1,7 @@
 // What the screens receive. Plain JSON, built on the server by tender-data.ts,
 // so no Prisma types (or sealed fields) reach a client component.
 
+import type { Debrief } from "./debrief";
 import type { CriterionKind } from "./scoring";
 import type { TenderStatus } from "./tender";
 
@@ -191,6 +192,8 @@ export interface TenderView {
   waitingReplies: number;
   /** Lowest quoted price and the delivered cost of that bid, for "saved". */
   savedCents: number | null;
+  /** What each losing seller is told, once the award is final (src/lib/debrief.ts). */
+  debriefs: { bidId: string; letter: string; debrief: Debrief }[];
 }
 
 export interface SellerTenderView {
@@ -233,6 +236,8 @@ export interface SellerTenderView {
     endedAt: string | null;
     milestones: MilestoneView[];
   } | null;
+  /** Set when this seller lost and the award is final: why, in numbers. */
+  debrief: Debrief | null;
 }
 
 export interface TenderSummary {
