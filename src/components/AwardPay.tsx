@@ -382,7 +382,7 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
             </ol>
             {next.kind === "pay" && hold?.expiresAt && (
               <p className="px-1 text-sm text-muted">
-                Seller can&apos;t deliver? Don&apos;t confirm the next step. Nothing more is captured, and PayPal lets the hold lapse on{" "}
+                Bidder can&apos;t deliver? Don&apos;t confirm the next step. Nothing more is captured, and PayPal lets the hold lapse on{" "}
                 {day(hold.expiresAt)}.
               </p>
             )}
@@ -445,7 +445,7 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
             What the other bidders see
           </SectionTitle>
           <p className="max-w-[70ch] text-sm text-muted">
-            Every seller who lost now sees why, on their own bid page and through their agent: their rank, their score on each of your criteria
+            Every bidder who lost now sees why, on their own bid page and through their agent: their rank, their score on each of your criteria
             against the winning bid, and both delivered costs. They never see the winner&apos;s name, price lines or the reasons written about the
             winning product.
           </p>

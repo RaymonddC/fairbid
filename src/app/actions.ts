@@ -145,7 +145,7 @@ const linkLimiter = createLimiter(10, 10 * 60_000);
 export async function linkBuyerChannelAction(kind: string) {
   return run<{ offer: LinkOffer }>(async () => {
     const user = await as("buyer");
-    if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+    if (kind !== "telegram") throw new StepError("Tender owners can link Telegram only.");
     if (!linkLimiter.hit(user.id)) throw new StepError("Too many codes requested. Wait a few minutes.");
     return { offer: await createBuyerLinkCode(user.id, kind) };
   });
@@ -154,7 +154,7 @@ export async function linkBuyerChannelAction(kind: string) {
 export async function unlinkBuyerChannelAction(kind: string) {
   return run(async () => {
     const user = await as("buyer");
-    if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+    if (kind !== "telegram") throw new StepError("Tender owners can link Telegram only.");
     await unlinkBuyerChannel(user.id, kind);
   });
 }
@@ -283,15 +283,15 @@ export async function inviteAgentsAction(tenderId: string) {
   return run(async () => {
     const user = await owner(tenderId);
     // The four agents are scripted: they belong in the demo, never in a real buyer's bids.
-    if (!DEMO_USERS.some((u) => u.id === user.id)) throw new StepError("Seller agents are a demo feature, for the demo accounts only.");
+    if (!DEMO_USERS.some((u) => u.id === user.id)) throw new StepError("Bidder agents are a demo feature, for the demo accounts only.");
     const keys = keysBySellerFromEnv(process.env.MCP_SELLER_KEYS);
-    if (keys.size === 0) throw new StepError("No seller agents are set up here: MCP_SELLER_KEYS is empty.");
+    if (keys.size === 0) throw new StepError("No bidder agents are set up here: MCP_SELLER_KEYS is empty.");
     // The agents call this same server on its loopback address. Never an address taken
     // from the request: a forged Host header would receive the seller keys.
     const steps = await runBots(`http://127.0.0.1:${process.env.PORT ?? 3000}/api/mcp`, keys, tenderId);
     const failed = steps.filter((s) => s.action === "error");
-    if (failed.length === steps.length && failed.length > 0) throw new StepError(`The seller agents could not reach the tender: ${failed[0].detail}`);
-    if (!steps.some((s) => s.action === "bid" || s.action === "answer")) throw new StepError("The seller agents had nothing to do: each has already bid and answered.");
+    if (failed.length === steps.length && failed.length > 0) throw new StepError(`The bidder agents could not reach the tender: ${failed[0].detail}`);
+    if (!steps.some((s) => s.action === "bid" || s.action === "answer")) throw new StepError("The bidder agents had nothing to do: each has already bid and answered.");
     return { bids: steps.filter((s) => s.action === "bid").length, answers: steps.filter((s) => s.action === "answer").length };
   });
 }

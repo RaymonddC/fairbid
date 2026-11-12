@@ -3,8 +3,6 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { CashflowChart } from "@/components/CashflowChart";
 import { QuestBoard, type Quest, type QuestState } from "@/components/QuestBoard";
-import { AgentKeys } from "@/components/AgentKeys";
-import { OwnAgent } from "@/components/OwnAgent";
 import { agentActivity } from "@/lib/agents/own-agent";
 import { ChannelLinker } from "@/components/ChannelLinker";
 import { TransactionsGrid } from "@/components/TransactionsGrid";
@@ -16,8 +14,6 @@ import { availableChannels, buyerChannels, buyerLinksOf, linksOf } from "@/lib/c
 import { db } from "@/lib/db";
 import { maskAddress } from "@/lib/channels/types";
 import { day, money } from "@/lib/format";
-import { listAgentKeys } from "@/lib/mcp/agent-keys";
-import { publicBaseUrl } from "@/lib/public-url";
 import { getUser } from "@/lib/session";
 import { getTenderView } from "@/lib/tender-data";
 import { rankBids, type TenderSummary } from "@/lib/views";
@@ -27,7 +23,7 @@ export const metadata = { title: "Dashboard · FairBid" };
 export default async function Home() {
   const user = await getUser();
   if (!user) redirect("/login");
-  return user.role === "buyer" ? <BuyerHome buyerId={user.id} /> : <SellerHome sellerId={user.sellerId!} name={user.name} />;
+  return user.role === "buyer" ? <BuyerHome buyerId={user.id} /> : <SellerHome sellerId={user.sellerId!} />;
 }
 
 // ── Buyer ────────────────────────────────────────────────────────────────────
@@ -153,7 +149,7 @@ function UpcomingPanel({ items, buyer }: { items: UpcomingPayment[]; buyer: bool
       <div className="grid gap-0.5">
         <h2 className="text-base">{buyer ? "Due next" : "Coming to you next"}</h2>
         <p className="text-sm text-muted">
-          {buyer ? "Each one is paid from a PayPal hold when you confirm the step." : "Paid when the buyer confirms the step."}
+          {buyer ? "Each one is paid from a PayPal hold when you confirm the step." : "Paid when the tender owner confirms the step."}
         </p>
       </div>
       {items.length === 0 ? (
@@ -168,13 +164,13 @@ function UpcomingPanel({ items, buyer }: { items: UpcomingPayment[]; buyer: bool
                   <span className="num font-semibold">{money(u.plannedCents, u.currency)}</span>
                 </span>
                 <span className="text-xs text-muted">
-                  {u.tenderTitle}, {buyer ? u.sellerName : "from the buyer"}
+                  {u.tenderTitle}, {buyer ? u.sellerName : "from the tender owner"}
                 </span>
                 {u.needsHold && (
                   <span className="text-xs font-medium text-warn">
                     {buyer
                       ? `${u.needsHold.replacing ? "The hold lapsed. Place a new one" : `Place the phase ${u.needsHold.phase} hold`}: ${money(u.needsHold.amountCents, u.currency)}`
-                      : `Waiting for the buyer to hold phase ${u.needsHold.phase} with PayPal`}
+                      : `Waiting for the tender owner to hold phase ${u.needsHold.phase} with PayPal`}
                   </span>
                 )}
                 {u.holdExpiresAt && (
@@ -233,12 +229,10 @@ function sumText(parts: [number, string][]): string {
   return shown.length ? shown.map(([cents, cur]) => money(cents, cur)).join(" + ") : money(0, parts[0]?.[1] ?? "EUR");
 }
 
-async function SellerHome({ sellerId, name }: { sellerId: string; name: string }) {
-  const [cf, links, agentKeys, base, agent, activity, tenders] = await Promise.all([
+async function SellerHome({ sellerId }: { sellerId: string }) {
+  const [cf, links, agent, activity, tenders] = await Promise.all([
     sellerCashflow(sellerId),
     linksOf(sellerId),
-    listAgentKeys(sellerId),
-    publicBaseUrl(),
     db.seller.findUnique({ where: { id: sellerId }, select: { agentBrief: true, agentOn: true } }),
     agentActivity(sellerId),
     db.tender.findMany({
@@ -260,19 +254,50 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
   const dueNext = cf.upcoming.length > 0;
   const open = quests.filter((q) => q.state === "open").length;
 
+  const bids = activity.filter((a) => a.kind === "agent.bid").length;
+  const skipped = activity.filter((a) => a.kind === "agent.skipped").length;
+
   return (
     <>
-      <PageHeader
-        title={`Welcome, ${name}`}
-        description="Buyers compare every bid at the price delivered to their door, so an honest all-in price is the one that counts."
-      />
+      <PageHeader title="Open tenders" />
       <div className="grid gap-8">
+        {/* Her agent, in one line: the way in to the build's highlight, not a wall of settings. */}
+        <Link href="/agent" className="notice group flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-4 hover:bg-raised">
+          <span className="grid gap-0.5">
+            <span className="font-medium">
+              {agent?.agentOn ? "Your agent is bidding for you" : "Let FairBid's agent bid for you"}
+            </span>
+            <span className="text-sm text-muted">
+              {agent?.agentOn
+                ? `Lately: ${bids} bid${bids === 1 ? "" : "s"}, ${skipped} skipped as not your product.`
+                : "Say what you make, and it bids on matching tenders, asks the tender owner what it needs to know, and answers their questions."}
+            </span>
+          </span>
+          <span className="text-sm font-medium text-dye group-hover:underline">{agent?.agentOn ? "Open your agent" : "Set up your agent"}</span>
+        </Link>
+
         <dl className={LEDGER}>
+          <Kpi label="Waiting for your bid" value={String(open)} note={open ? "Open tenders you have not bid on" : "You have bid on every one"} />
+          <Kpi label="Due to you next" value={dueText} note={dueNext ? "When the tender owner confirms the step" : "Nothing due"} />
           <Kpi label="Received through PayPal" value={sumText(received.map(([cur, r]) => [r.cents, cur]))} note={`${cf.transactions.length} payments`} />
-          <Kpi label="In rupiah, after PayPal fees" value={idr(rupiah)} note="Estimate, after PayPal fees" />
-          <Kpi label="Due to you next" value={dueText} note={dueNext ? "When the tender owner confirms the step" : "Nothing due right now"} />
-          <Kpi label="Waiting for your bid" value={String(open)} note={open ? "Open tenders you have not bid on" : "You have bid on every open tender"} />
+          <Kpi label="In rupiah, after fees" value={idr(rupiah)} note="An estimate" />
         </dl>
+
+        <div className={cf.upcoming.length ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" : "grid"}>
+          <QuestBoard quests={quests} />
+          {cf.upcoming.length > 0 && <UpcomingPanel items={cf.upcoming} buyer={false} />}
+        </div>
+
+        {cf.transactions.length > 0 && (
+          <More title={`Payments received (${cf.transactions.length})`}>
+            <TransactionsGrid txs={cf.transactions} title="Payments received" showSeller={false} />
+            <p className="text-xs text-faint">
+              Rupiah amounts are estimates: PayPal fee {PAYPAL_FEE_PCT}% + 0.55 per payment, as charged in the sandbox, and assumed rates of Rp{" "}
+              {IDR_PER.EUR.toLocaleString("id-ID")} per euro and Rp {IDR_PER.USD.toLocaleString("id-ID")} per dollar. Your PayPal account shows the real
+              figures.
+            </p>
+          </More>
+        )}
 
         <ChannelLinker
           channels={availableChannels().map((c) => ({
@@ -280,22 +305,6 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
             linked: links.find((l) => l.kind === c.kind) ? maskAddress(c.kind, links.find((l) => l.kind === c.kind)!.address) : null,
           }))}
         />
-        <OwnAgent
-          brief={agent?.agentBrief ?? ""}
-          on={agent?.agentOn ?? false}
-          activity={activity}
-          keys={<AgentKeys keys={agentKeys} mcpUrl={`${base}/api/mcp`} bare />}
-        />
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <QuestBoard quests={quests} />
-          <UpcomingPanel items={cf.upcoming} buyer={false} />
-        </div>
-
-        <TransactionsGrid txs={cf.transactions} title="Payments received" showSeller={false} />
-        <p className="text-xs text-faint">
-          Rupiah amounts are estimates: PayPal fee {PAYPAL_FEE_PCT}% + 0.55 per payment, as charged in the sandbox, and assumed rates of Rp{" "}
-          {IDR_PER.EUR.toLocaleString("id-ID")} per euro and Rp {IDR_PER.USD.toLocaleString("id-ID")} per dollar. Your PayPal account shows the real figures.
-        </p>
       </div>
     </>
   );

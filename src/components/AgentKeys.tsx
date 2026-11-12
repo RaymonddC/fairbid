@@ -47,7 +47,7 @@ export function AgentKeys({ keys, mcpUrl, bare = false }: { keys: AgentKeyView[]
       <div className="grid gap-0.5">
         {!bare && <h2 className="text-base">Let your AI agent bid for you</h2>}
         <p className="text-sm text-muted">
-          Optional. Give an AI agent, such as Claude, a key and it can find open tenders, seal bids and answer buyers&apos; questions for you,
+          Optional. Give an AI agent, such as Claude, a key and it can find open tenders, seal bids and answer tender owners&apos; questions for you,
           under the same rules as this site: bids stay sealed, no late bids, and an answer never changes a price.{" "}
           <Link href="/agents" className="font-medium text-dye underline underline-offset-4">
             How it works

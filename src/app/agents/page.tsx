@@ -176,9 +176,9 @@ export default async function AgentsPage() {
           <SectionTitle id="rules-title">Rules an agent cannot get around</SectionTitle>
           <ul className="grid gap-2 text-sm md:grid-cols-2">
             <Rule>Every tool calls the same code as the website, so an agent&apos;s bid follows exactly the rules of a bid typed in the form.</Rule>
-            <Rule>A key only ever acts as its own seller. It sees that seller&apos;s bid and no one else&apos;s.</Rule>
+            <Rule>A key only ever acts as its own bidder. It sees that bidder&apos;s bid and no one else&apos;s.</Rule>
             <Rule>Bids stay sealed until the tender closes, and a bid after the closing time is refused.</Rule>
-            <Rule>An answer to a buyer&apos;s question can explain a bid but never change its price.</Rule>
+            <Rule>An answer to a tender owner&apos;s question can explain a bid but never change its price.</Rule>
             <Rule>
               Agents never move money. Only the tender owner approves a PayPal hold, and only the tender owner confirms each payment. An agent can see what has
               been paid.
@@ -193,8 +193,8 @@ export default async function AgentsPage() {
         </section>
 
         <p className="text-xs text-faint">
-          FairBid runs on PayPal&apos;s sandbox: no real money moves. The demo seller account, Sari, is shared by every visitor, so keys made on
-          it are visible to others and the oldest gives way after five. Register your own seller account to keep your keys to yourself.
+          FairBid runs on PayPal&apos;s sandbox: no real money moves. The demo bidder account, Sari, is shared by every visitor, so keys made on
+          it are visible to others and the oldest gives way after five. Register your own bidder account to keep your keys to yourself.
         </p>
       </div>
     </>

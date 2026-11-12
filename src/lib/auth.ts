@@ -14,6 +14,9 @@ export interface User {
 
 export const SESSION_COOKIE = "fairbid_session";
 
+/** The role as people read it: bidders and tender owners. The stored values stay "seller" and "buyer". */
+export const roleLabel = (role: string) => (role === "seller" ? "Bidder" : role === "buyer" ? "Tender owner" : role);
+
 export const DEMO_USERS: readonly User[] = [
   { id: "buyer-anna", name: "Anna", role: "buyer", detail: "Purchasing lead, boutique hotel group, Berlin" },
   {

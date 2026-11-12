@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { signInAction, signOutAction } from "@/app/login/actions";
-import { DEMO_USERS, type User } from "@/lib/auth";
+import { DEMO_USERS, roleLabel, type User } from "@/lib/auth";
 import { Avatar } from "./Avatar";
 import { LogoMark } from "./Logo";
 
@@ -23,7 +23,10 @@ export function TopNav({ user }: { user: User | null }) {
   const tabs: Tab[] = !user
     ? []
     : seller
-      ? [{ href: "/", label: "Open tenders", active: (p) => p === "/" || p.startsWith("/tender") }]
+      ? [
+          { href: "/", label: "Open tenders", active: (p) => p === "/" || p.startsWith("/tender") },
+          { href: "/agent", label: "Your agent", active: (p) => p === "/agent" },
+        ]
       : [
           { href: "/", label: "Tenders", active: (p) => p === "/" || p.startsWith("/tender") },
           { href: "/post", label: "Post a tender", active: (p) => p.startsWith("/post") },
@@ -120,13 +123,13 @@ function AccountMenu({ user }: { user: User }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={menuId}
-        aria-label={`Account: ${user.name}, ${user.role}`}
+        aria-label={`Account: ${user.name}, ${roleLabel(user.role)}`}
         className="flex h-10 items-center gap-2.5 rounded-full pl-1 pr-2 text-sm transition-colors hover:bg-surface"
       >
         <Avatar id={user.id} size={32} />
         <span className="hidden text-left leading-tight sm:grid">
           <span className="font-medium text-ink">{user.name}</span>
-          <span className="text-[11px] capitalize text-faint">{user.role}</span>
+          <span className="text-[11px] text-faint">{roleLabel(user.role)}</span>
         </span>
         <Chevron />
       </button>
@@ -150,7 +153,7 @@ function AccountMenu({ user }: { user: User }) {
                   <span className="grid min-w-0 flex-1 leading-tight">
                     <span className="truncate text-sm font-medium text-ink">{p.name}</span>
                     <span className="truncate text-xs text-faint">
-                      <span className="capitalize">{p.role}</span>, {p.detail}
+                      <span>{roleLabel(p.role)}</span>, {p.detail}
                     </span>
                   </span>
                   {on && <Tick />}

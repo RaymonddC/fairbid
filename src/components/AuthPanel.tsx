@@ -10,6 +10,7 @@ import {
   type RegisterField,
   type RegisterState,
 } from "@/app/login/actions";
+import { roleLabel } from "@/lib/auth";
 import { SELLER_COUNTRIES, countryName } from "@/lib/format";
 import { Avatar } from "./Avatar";
 import { Spinner } from "./Loading";
@@ -334,7 +335,7 @@ function DemoButton({ account: a }: { account: DemoAccount }) {
       name="userId"
       value={a.id}
       disabled={pending}
-      aria-label={`Continue as ${a.name}, the demo ${a.role}: ${a.detail}`}
+      aria-label={`Continue as ${a.name}, the demo ${roleLabel(a.role).toLowerCase()}: ${a.detail}`}
       className="auth-press flex min-h-14 w-full items-center gap-2.5 rounded-lg border border-dye/35 bg-dye-soft/50 px-3 py-2 text-left transition-colors hover:border-dye hover:bg-dye-soft disabled:opacity-80"
     >
       <Avatar id={a.id} size={30} />

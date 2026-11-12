@@ -152,7 +152,7 @@ export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; o
     <Panel className="grid gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="grid gap-0.5">
-          <h2 className="text-base">Sellers&apos; questions</h2>
+          <h2 className="text-base">Bidders&apos; questions</h2>
           <p className="text-xs text-muted">
             Who asked stays hidden, even from you, while bids are sealed. Every answer goes to every bidder.
           </p>

@@ -29,7 +29,7 @@ export function ChannelLinker({ channels, audience = "seller" }: { channels: Row
           </p>
         ) : (
           <p className="text-sm text-muted">
-            Optional. A buyer&apos;s question also arrives in the chat you link, and your reply there is recorded exactly like one typed in the
+            Optional. A tender owner&apos;s question also arrives in the chat you link, and your reply there is recorded exactly like one typed in the
             inbox. The inbox keeps working either way.
           </p>
         )}
