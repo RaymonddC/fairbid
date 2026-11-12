@@ -44,8 +44,17 @@ export function draftFrom(need: string): Draft {
     // Dollars or a US city in the request point to a US delivery; otherwise Germany.
     destination: usd || /\b(new york|usa|united states|us)\b/i.test(need) ? "US" : "DE",
     deliveryDays: Math.min(MAX_WINDOW_DAYS, weeks * 7),
-    questions: [],
+    questions: gapQuestions(need),
   };
+}
+
+/** What a plain request usually leaves open, asked only when the request does not already say it. */
+export function gapQuestions(need: string): string[] {
+  const q: string[] = [];
+  if (!/\d+\s*(x|×|by)\s*\d+|\b\d+\s*(cm|mm|ml|m|kg|g)\b|\bsize/i.test(need)) q.push("What size should each one be?");
+  if (!/colou?r|indigo|blue|brown|white|black|\bred\b|green|natural|pattern|motif/i.test(need)) q.push("Any colours or pattern you want?");
+  if (!/\bpack|\bwrap|carton|label|\bbox|\bbag/i.test(need)) q.push("How should they be packed or labelled?");
+  return q.slice(0, 3);
 }
 
 /** Brings any draft, the model's included, inside the limits the server will enforce. */
