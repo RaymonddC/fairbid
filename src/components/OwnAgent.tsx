@@ -110,9 +110,26 @@ export function OwnAgent({
           <ul className="grid border-t border-line">
             {activity.map((a) => (
               <li key={a.id} className="grid gap-x-3 border-b border-line py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline">
-                <Link href={`/tender/${a.tenderId}`} className="hover:text-dye">
-                  {a.text}
-                </Link>
+                <div className="grid gap-1.5">
+                  <Link href={`/tender/${a.tenderId}`} className={a.kind === "agent.summary" ? "font-medium hover:text-dye" : "hover:text-dye"}>
+                    {a.text}
+                  </Link>
+                  {a.turns && a.turns.length > 0 && (
+                    // The talk with the tender owner's AI, turn by turn: published to every bidder, without who asked.
+                    <ol className="grid gap-1 border-l-2 border-line pl-3 text-xs text-muted">
+                      {a.turns.map((t, i) => (
+                        <li key={i} className="grid gap-0.5">
+                          <span className="text-ink">Asked: {t.question}</span>
+                          <span>
+                            {t.answer === null
+                              ? "Waiting for the tender owner."
+                              : `${t.answeredBy === "buyer" ? "The tender owner" : "Their AI, from the tender"}: ${t.answer}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
                 <time className="text-xs text-faint" dateTime={a.at}>
                   {dayTime(a.at)}
                 </time>

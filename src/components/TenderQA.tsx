@@ -145,20 +145,35 @@ function AnswerBox({ q }: { q: PublishedQuestion }) {
 }
 
 /** The buyer's side: bidders' questions, with no names, and an answer box for those the AI left. */
-export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; open: boolean }) {
+export function BuyerQA({
+  questions,
+  open,
+  summary,
+}: {
+  questions: PublishedQuestion[];
+  open: boolean;
+  /** The latest summary of what bidders and their agents asked, written by the tender owner's AI. */
+  summary?: { summary: string; at: string } | null;
+}) {
   if (!open && questions.length === 0) return null;
   const waiting = questions.filter((q) => !q.answer).length;
   return (
     <Panel className="grid gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="grid gap-0.5">
-          <h2 className="text-base">Sellers&apos; questions</h2>
+          <h2 className="text-base">Bidders&apos; questions</h2>
           <p className="text-xs text-muted">
             Who asked stays hidden, even from you, while bids are sealed. Every answer goes to every bidder.
           </p>
         </div>
         {waiting > 0 && <Pill tone="warn">{waiting} waiting for you</Pill>}
       </div>
+      {summary && questions.length > 0 && (
+        <div className="grid gap-1 border-l-2 border-dye pl-3">
+          <span className="text-xs font-medium text-dye">Summary from your AI, {dayTime(summary.at)}</span>
+          <p className="text-sm">{summary.summary}</p>
+        </div>
+      )}
       {questions.length === 0 ? (
         <p className="text-sm text-muted">No questions yet. Your AI answers what the tender already settles; the rest comes to you here.</p>
       ) : (

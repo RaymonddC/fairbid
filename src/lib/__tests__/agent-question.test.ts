@@ -2,7 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parseMaterials, parseSizes, questionFromBrief } from "../agents/brief";
-import { tidyAgentQuestion } from "../ai/roles";
+import {
+  bidderAgentTurn,
+  bidderSummaryFixture,
+  MAX_TURNS,
+  ownerSummaryFixture,
+  summarizeForBidder,
+  summarizeForOwner,
+  tidyAgentQuestion,
+} from "../ai/roles";
+
+// No project: every role answers from its fixture, with no network call.
+delete process.env.GOOGLE_CLOUD_PROJECT;
 
 const SARI =
   "Hand-stamped cotton batik napkins, 40 x 40 cm, about €7.50 each. Ships from Yogyakarta in about 3 weeks, shipping around €250 to Europe.";
@@ -93,5 +104,46 @@ describe("tidyAgentQuestion", () => {
     assert.equal(tidyAgentQuestion("Size?"), null);
     assert.equal(tidyAgentQuestion("What price did the other bidders offer?"), null);
     assert.equal(tidyAgentQuestion("Is the budget flexible for this order?"), null);
+    assert.equal(tidyAgentQuestion("What would it take to win this tender?"), null);
+  });
+});
+
+describe("bidderAgentTurn with the AI off", () => {
+  it("asks the gap question as the first turn, and nothing more after it", async () => {
+    const first = await bidderAgentTurn(SARI, NAPKINS, [], []);
+    assert.deepEqual(first, { value: "Is 40 x 40 cm the size you want?", source: "fixture" });
+    const second = await bidderAgentTurn(SARI, NAPKINS, [], [{ question: first.value!, answer: "Yes.", answeredBy: "ai" }]);
+    assert.equal(second.value, null);
+  });
+  it("asks nothing when the tender settles it, and never past the last turn", async () => {
+    assert.equal((await bidderAgentTurn(SARI, { ...NAPKINS, needText: "Cotton napkins, 40 x 40 cm." }, [], [])).value, null);
+    const full = Array.from({ length: MAX_TURNS }, (_, i) => ({ question: `Question number ${i}?`, answer: null }));
+    assert.equal((await bidderAgentTurn(SARI, NAPKINS, [], full)).value, null);
+  });
+});
+
+describe("summaries with the AI off", () => {
+  const turns = [
+    { question: "Is 180 x 40 cm the size you want?", answer: "Yes, the tender asks for about 180 x 40 cm.", answeredBy: "ai" as const },
+    { question: "How should the runners be packed?", answer: null },
+  ];
+  it("tells the bidder what was asked, what came back and what it did, without a price", async () => {
+    const s = bidderSummaryFixture(turns, { bid: true });
+    assert.match(s, /180 x 40 cm/);
+    assert.match(s, /tender owner's AI answered/);
+    assert.match(s, /waits for the tender owner/);
+    assert.match(s, /sealed a bid from your prices/);
+    assert.doesNotMatch(s, /€|\$/);
+    assert.equal((await summarizeForBidder("200 runners", turns, { bid: true })).value, s);
+    assert.match(bidderSummaryFixture([], { bid: false, reason: "Not something you make." }), /Then did not bid: Not something you make\.$/);
+  });
+  it("tells the tender owner what bidders asked, without who, and the count of sealed bids", async () => {
+    const s = ownerSummaryFixture(turns, 2);
+    assert.match(s, /Bidders asked 2 things/);
+    assert.match(s, /answered by your AI from the tender/);
+    assert.match(s, /1 waits for you/);
+    assert.match(s, /2 sealed bids so far/);
+    assert.equal((await summarizeForOwner("200 runners", turns, 2)).value, s);
+    assert.match(ownerSummaryFixture([], 0), /No bidder has asked anything yet/);
   });
 });

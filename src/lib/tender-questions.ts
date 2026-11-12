@@ -8,7 +8,7 @@
 // The buyer's AI answers what the published tender already settles; the rest waits for
 // the buyer, and onQuestionWaitingForBuyer is called so they can be told.
 
-import { answerAsBuyer, type PublishedTender } from "./ai/roles";
+import { answerAsBuyer, summarizeForOwner, type PublishedTender } from "./ai/roles";
 import { appendEvent } from "./audit-store";
 import { inBackground, notifyBuyerOfSellerQuestion } from "./channels/buyer-notify";
 import { db } from "./db";
@@ -166,6 +166,8 @@ export async function askTenderQuestion({
       log.warn("question hook failed", { tenderId, error: (error as Error).message?.slice(0, 200) });
     }
   }
+  // The tender owner's summary of what bidders asked, rewritten after the response.
+  inBackground(() => refreshOwnerSummary(tenderId));
   return publish(answered, sellerId);
 }
 
@@ -192,6 +194,7 @@ export async function answerTenderQuestion({
   if (done.count === 0) throw new StepError("This question already has an answer.");
   await appendEvent(q.tenderId, buyerAccountId, "question.answered", { questionId, answeredBy: "buyer", answer: checked.text });
   const row = await db.tenderQuestion.findUniqueOrThrow({ where: { id: questionId } });
+  inBackground(() => refreshOwnerSummary(q.tenderId));
   return publish(row);
 }
 
@@ -200,4 +203,32 @@ export async function answerTenderQuestion({
 export async function listTenderQuestions(tenderId: string, viewerSellerId?: string): Promise<PublishedQuestion[]> {
   const rows = await db.tenderQuestion.findMany({ where: { tenderId }, orderBy: { askedAt: "asc" } });
   return rows.map((r) => publish(r, viewerSellerId));
+}
+
+/**
+ * Rewrites the tender owner's summary of what bidders and their agents asked on a tender, and
+ * records it as an owner.summary event. No bidder is named: the questions carry no asker, and
+ * only the count of sealed bids goes in. Never throws.
+ */
+export async function refreshOwnerSummary(tenderId: string): Promise<string | null> {
+  try {
+    const t = await db.tender.findUnique({ where: { id: tenderId }, select: { title: true } });
+    if (!t) return null;
+    const rows = await db.tenderQuestion.findMany({ where: { tenderId }, orderBy: { askedAt: "asc" }, select: { question: true, answer: true, answeredBy: true } });
+    const questions = rows.map((r) => ({ question: r.question, answer: r.answer, answeredBy: r.answer ? (r.answeredBy === "buyer" ? ("buyer" as const) : ("ai" as const)) : null }));
+    const sealed = await db.bid.count({ where: { tenderId } });
+    const s = await summarizeForOwner(t.title, questions, sealed);
+    await appendEvent(tenderId, "ai", "owner.summary", { summary: s.value, source: s.source, questions: questions.length });
+    return s.value;
+  } catch (error) {
+    log.warn("tender owner summary failed", { tenderId, error: (error as Error).message?.slice(0, 200) });
+    return null;
+  }
+}
+
+/** The latest summary for the tender owner, or null when there is none yet. */
+export async function latestOwnerSummary(tenderId: string): Promise<{ summary: string; at: string } | null> {
+  const e = await db.event.findFirst({ where: { tenderId, kind: "owner.summary" }, orderBy: { seq: "desc" }, select: { payload: true, at: true } });
+  const summary = (e?.payload as { summary?: unknown } | undefined)?.summary;
+  return e && typeof summary === "string" ? { summary, at: e.at.toISOString() } : null;
 }
