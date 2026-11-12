@@ -121,7 +121,7 @@ MCP_SELLER_KEYS="$(gcloud secrets versions access latest --secret=fairbid-mcp-se
 
 ## Judging week
 
-Judges may open the link at any hour, and a cold start makes the first page slow. From 12 Nov until results are out, set `MIN_INSTANCES` to `1` and redeploy. That costs about US$10 a month while it is on. Set it back to empty afterwards.
+Judges may open the link at any hour, and a cold start makes the first page slow. From 12 Nov until results are out, set `MIN_INSTANCES` to `1` and redeploy. That costs about US$10 a month while it is on. Set it back to empty afterwards. The service also runs with `--no-cpu-throttling` (deploy.yml): agents bidding when a tender is published, the tender owner's AI summary and Telegram updates run after the page has answered, and Cloud Run would otherwise starve that work of CPU. With one warm instance that adds roughly US$35 to US$50 a month while it is on; after judging, remove the flag and set `MIN_INSTANCES` back to empty.
 
 The service has CPU boost on for faster cold starts, at most 3 instances, and 40 requests per instance, so a burst cannot run up the bill or exhaust the database's connections.
 
