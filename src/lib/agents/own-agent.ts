@@ -26,6 +26,7 @@ import { log } from "../log";
 import { askTenderQuestion, canAskMore, listTenderQuestions, type PublishedQuestion } from "../tender-questions";
 import { StepError, addReply, submitBid } from "../workflow";
 import type { BriefTender } from "./brief";
+import { notifySeller } from "../channels/seller-notify";
 
 export const agentActor = (sellerId: string) => `agent:${sellerId}`;
 
@@ -197,6 +198,10 @@ async function workTender(
         const s = await summarizeForBidder(tender.title, talk.turns, outcome);
         // The summary and the questions it covers. Never a price: the tender owner reads this log too.
         await record(tender.id, seller.id, "agent.summary", { summary: s.value, questionIds: talk.questionIds, ai: s.source }, steps, s.value);
+        // The bidder sees it in their own chat too; never throws.
+        await notifySeller(seller.id, `FairBid: your agent on "${tender.title}":
+
+${s.value}`);
       } catch (error) {
         log.error("own agent summary failed", error, { sellerId: seller.id, tenderId: tender.id });
       }

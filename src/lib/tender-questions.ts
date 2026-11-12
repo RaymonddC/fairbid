@@ -10,7 +10,7 @@
 
 import { answerAsBuyer, summarizeForOwner, type PublishedTender } from "./ai/roles";
 import { appendEvent } from "./audit-store";
-import { inBackground, notifyBuyerOfSellerQuestion } from "./channels/buyer-notify";
+import { inBackground, notifyBuyerOfAiAnswer, notifyBuyerOfSellerQuestion } from "./channels/buyer-notify";
 import { db } from "./db";
 import { log } from "./log";
 import { StepError } from "./workflow";
@@ -155,6 +155,9 @@ export async function askTenderQuestion({
         data: { answer: r.value.answer, answeredBy: "ai", answeredAt: new Date() },
       });
       await appendEvent(tenderId, "ai", "question.answered", { questionId: row.id, answeredBy: "ai", source: r.source, answer: r.value.answer });
+      // The owner watches the agents talk in their chat: the question and their agent's answer.
+      const answer = r.value.answer;
+      inBackground(() => notifyBuyerOfAiAnswer(tenderId, checked.text, answer, via === "agent"));
     }
   } catch (error) {
     log.warn("tender owner answerer failed; the question waits for the tender owner", { tenderId, error: (error as Error).message?.slice(0, 200) });

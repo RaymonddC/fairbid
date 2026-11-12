@@ -47,6 +47,26 @@ export async function notifyBuyer(accountId: string, text: string, opts: { tende
   }
 }
 
+/** The owner's agent answered a bidder's question from the tender: the owner sees the exchange in their chat. No bidder is named. */
+export async function notifyBuyerOfAiAnswer(tenderId: string, question: string, answer: string, byAgent: boolean): Promise<void> {
+  try {
+    const t = await db.tender.findUnique({ where: { id: tenderId }, select: { title: true, buyerId: true } });
+    if (!t?.buyerId) return;
+    await notifyBuyer(
+      t.buyerId,
+      `FairBid: ${byAgent ? "a bidder's agent" : "a bidder"} asked about "${t.title}":
+
+${question}
+
+Your agent answered from the tender, for every bidder:
+
+${answer}`,
+    );
+  } catch (error) {
+    log.warn("tender owner AI answer notify failed", { tenderId, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 /** A new sealed bid arrived while bidding is open: the count, nothing else. */
 export async function notifyBuyerOfNewBid(tenderId: string): Promise<void> {
   const t = await db.tender.findUnique({ where: { id: tenderId }, select: { title: true, buyerId: true, status: true, _count: { select: { bids: true } } } });
