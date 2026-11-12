@@ -6,51 +6,21 @@
 @custom-variant roomy (@media (min-width: 1024px) and (min-height: 760px));
 
 /*
-  FairBid: a working tool for buyers and sellers. A tender is paperwork, so light mode is paper on a desk:
-  warm sheets with sharp corners on a warm desk, not grey dashboard cards. Dark is indigo night, not grey.
-  The brand indigo (Sari's dye) stays the same in both themes; turmeric marks only the logo seal. Semantic colours (ok / warn / flag) are muted and separate.
+  FairBid: a working tool for buyers and sellers. It has one theme, dark: indigo night, not grey.
+  A tender is paperwork, so surfaces are sharp-cornered sheets on a dark desk, not rounded dashboard cards.
+  The brand indigo (Sari's dye) is the accent; turmeric marks only the logo seal. Semantic colours (ok / warn / flag) are muted and separate.
   Newsreader for headings, IBM Plex Sans for text, IBM Plex Mono only for identifiers. Motion only shows what changed.
 */
 
 :root {
-  --brand: #2e3fa3; /* fixed indigo for the logo tile, same in both themes */
-  --canvas: #f4f1ea; /* the desk */
-  --surface: #fffdf8; /* paper */
-  --slip: #fffdf8; /* the sign-in slip: the same paper */
-  --raised: #f9f6ef;
-  --ink: #0f1222;
-  --muted: #565c70; /* 5.9:1 on the desk */
-  --faint: #62687c; /* 4.9:1 on the desk, AA for small text */
-  --line: #e6e0d4;
-  --line-strong: #d3cbbb;
-  --dye: #2e3fa3;
-  --dye-hover: #25348a;
-  --dye-soft: #eef0fc;
-  --sun: #e3a72f;
-  --sun-soft: #fcf3dd;
-  --ok: #1b7a4b;
-  --ok-soft: #e4f4ea;
-  --warn: #8a5800;
-  --warn-soft: #fbf0d6;
-  --flag: #b2381f;
-  --flag-soft: #fbe8e3;
-  --duty: #d0901e;
-  --card-shadow: 0 1px 1px rgba(40, 32, 16, 0.05), 0 3px 8px -4px rgba(40, 32, 16, 0.14); /* paper lying flat */
-  --chart-1: #4a5bc4; /* paid to sellers; validated with the dataviz palette checks */
-  --chart-2: #b7791f; /* still held */
-  --skeleton-a: #eceef3;
-  --skeleton-b: #f6f7fa;
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  --canvas: #0b0e1a;
-  --surface: #121628;
-  --slip: #121628;
+  --brand: #2e3fa3; /* fixed indigo for the logo tile */
+  --canvas: #0b0e1a; /* the desk */
+  --surface: #121628; /* a sheet */
+  --slip: #121628; /* the sign-in slip */
   --raised: #171c31;
   --ink: #eceef6;
   --muted: #a0a6bc;
-  --faint: #8a91ab; /* 5.7:1 on the dark surface */
+  --faint: #8a91ab; /* 5.7:1 on the surface */
   --line: #232842;
   --line-strong: #323856;
   --dye: #8c9bff;
@@ -66,8 +36,8 @@
   --flag-soft: rgba(240, 122, 95, 0.14);
   --duty: #e3a43a;
   --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-  --chart-1: #7484ea;
-  --chart-2: #b98022;
+  --chart-1: #7484ea; /* paid to sellers */
+  --chart-2: #b98022; /* still held */
   --skeleton-a: #1a1f35;
   --skeleton-b: #232842;
   color-scheme: dark;
@@ -145,7 +115,7 @@ h1, h2, h3 {
 
 ::selection { background: var(--dye-soft); }
 
-/* Surfaces: one hairline border and a soft lift; in dark mode a faint top highlight instead. */
+/* Surfaces: one hairline border and a faint top highlight. */
 .notice {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -214,7 +184,7 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* The brand side: a fixed night indigo in both themes, with one soft glow. */
+/* The brand side: a fixed night indigo, with one soft glow. */
 .auth-brand {
   --auth-night: #141a4d;
   /* The tender sheet on the indigo desk: warm paper, ink, and a stamp in the brand indigo. */
@@ -224,7 +194,7 @@ dialog[open] { animation: fade-in 150ms ease-out both; }
   --paper-line: #e3ddcf;
   --paper-under: #ece6d8;
   --stamp: #2e3fa3;
-  /* The paper stays light in dark mode, so its red stays the light theme's red. */
+  /* The paper stays light on the dark desk, so its red is a red for paper. */
   --paper-flag: #b2381f;
   background: var(--auth-night);
   color: #fff;

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from "next/font/google";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
-import { InlineScript } from "@/components/InlineScript";
 import { Toaster } from "@/components/Toaster";
 import { TopNav } from "@/components/TopNav";
 import { getUser } from "@/lib/session";
@@ -18,19 +17,13 @@ export const metadata: Metadata = {
   description: "Fair cross-border tenders. The best delivered offer wins, and PayPal pays only on delivery.",
 };
 
-// Runs before first paint: applies the saved theme (light, dark or the system setting) so there is no flash.
-const themeScript = `(function(){try{var p=localStorage.getItem("fairbid-theme")||"system";var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var e=document.documentElement;e.setAttribute("data-theme",d?"dark":"light");e.setAttribute("data-theme-pref",p)}catch(x){}})()`;
-
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Reading headers makes every page dynamic. Next only adds the CSP nonce to its
   // scripts on dynamic renders, and a static page's scripts would be blocked.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  await headers();
   const user = await getUser();
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${body.variable} ${code.variable} ${display.variable} h-full antialiased`}>
-      <head>
-        <InlineScript nonce={nonce} html={themeScript} />
-      </head>
+    <html lang="en" data-theme="dark" style={{ colorScheme: "dark" }} className={`${body.variable} ${code.variable} ${display.variable} h-full antialiased`}>
       <body className="min-h-full">
         <a
           href="#main"
