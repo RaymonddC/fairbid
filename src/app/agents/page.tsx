@@ -7,7 +7,7 @@ import { getUser } from "@/lib/session";
 
 export const metadata = {
   title: "Connect an AI agent · FairBid",
-  description: "Let your own AI agent find tenders, seal bids and answer buyers' questions on FairBid, through MCP.",
+  description: "Let your own AI agent find tenders, seal bids and answer tender owners' questions on FairBid, through MCP.",
 };
 
 const TOOLS: { name: string; does: string; input: string }[] = [
@@ -18,12 +18,12 @@ const TOOLS: { name: string; does: string; input: string }[] = [
   },
   {
     name: "get_tender",
-    does: "One tender in full: the buyer's need, each criterion with its rubric, the duty and VAT rates used to compare bids, your own sealed bid if any, and questions sent to you. Other sellers' bids are never shown.",
+    does: "One tender in full: the tender owner's need, each criterion with its rubric, the duty and VAT rates used to compare bids, your own sealed bid if any, and questions sent to you. Other bidders' bids are never shown.",
     input: "tender_id",
   },
   {
     name: "submit_bid",
-    does: "Seals your bid, or replaces your earlier one while bidding is open. Nobody, the buyer included, sees it before the tender closes.",
+    does: "Seals your bid, or replaces your earlier one while bidding is open. Nobody, the tender owner included, sees it before the tender closes.",
     input: "tender_id, goods, shipping, fees (whole units of the tender's currency), lead_time_days, hs_code, notes, photos (1 to 4)",
   },
   {
@@ -38,7 +38,7 @@ const TOOLS: { name: string; does: string; input: string }[] = [
   },
   {
     name: "answer_clarification",
-    does: "Answers a question the buyer sent about your bid. An answer can explain; it can never change your price.",
+    does: "Answers a question the tender owner sent about your bid. An answer can explain; it can never change your price.",
     input: "clarification_id, body (up to 1,000 characters)",
   },
 ];
@@ -69,7 +69,7 @@ export default async function AgentsPage() {
     <>
       <PageHeader
         title="Connect an AI agent"
-        description="Sellers can let their own AI agent work FairBid for them: find open tenders, seal bids, answer buyers' questions and follow payments. It talks to FairBid over MCP, the open protocol AI assistants use for tools, under exactly the rules the website follows."
+        description="Bidders can let their own AI agent work FairBid for them: find open tenders, seal bids, answer tender owners' questions and follow payments. It talks to FairBid over MCP, the open protocol AI assistants use for tools, under exactly the rules the website follows."
         actions={
           seller ? (
             <Link href="/" className={linkButton.primary}>
@@ -77,7 +77,7 @@ export default async function AgentsPage() {
             </Link>
           ) : (
             <Link href="/register" className={linkButton.primary}>
-              Create a seller account
+              Create a bidder account
             </Link>
           )
         }
@@ -88,12 +88,12 @@ export default async function AgentsPage() {
           <SectionTitle id="steps-title">Three steps</SectionTitle>
           <ol className="grid gap-3 md:grid-cols-3">
             <Step n={1} title="Get a key">
-              Sign in as a seller and press <strong className="font-semibold">Make a key</strong> on your dashboard. Copy it: it is shown once.
+              Sign in as a bidder and press <strong className="font-semibold">Make a key</strong> on your dashboard. Copy it: it is shown once.
               {!user && (
                 <>
                   {" "}
-                  No account? <Link href="/register" className="font-medium text-dye underline underline-offset-4">Register as a seller</Link>, or
-                  sign in as the demo seller, Sari, to try it.
+                  No account? <Link href="/register" className="font-medium text-dye underline underline-offset-4">Register as a bidder</Link>, or
+                  sign in as the demo bidder, Sari, to try it.
                 </>
               )}
             </Step>
@@ -121,7 +121,7 @@ export default async function AgentsPage() {
               <code className="font-mono">Authorization: Bearer &lt;your key&gt;</code>
             </dd>
             <dt className="text-muted">Limit</dt>
-            <dd>120 requests a minute per seller</dd>
+            <dd>120 requests a minute per bidder</dd>
           </dl>
         </Panel>
 
@@ -180,7 +180,7 @@ export default async function AgentsPage() {
             <Rule>Bids stay sealed until the tender closes, and a bid after the closing time is refused.</Rule>
             <Rule>An answer to a buyer&apos;s question can explain a bid but never change its price.</Rule>
             <Rule>
-              Agents never move money. Only the buyer approves a PayPal hold, and only the buyer confirms each payment. An agent can see what has
+              Agents never move money. Only the tender owner approves a PayPal hold, and only the tender owner confirms each payment. An agent can see what has
               been paid.
             </Rule>
             <Rule>Everything an agent does appears in the tender&apos;s activity log, marked as an agent.</Rule>

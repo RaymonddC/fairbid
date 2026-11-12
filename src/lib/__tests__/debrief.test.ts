@@ -56,7 +56,7 @@ describe("buildDebrief", () => {
 
   it("says plainly when the bid was over budget", () => {
     const d = buildDebrief({ ...base, myBidId: "A" })!;
-    assert.match(d.summary, /over the buyer's €3,000 budget, so it ranked after every bid within budget/);
+    assert.match(d.summary, /over the tender owner's €3,000 budget, so it ranked after every bid within budget/);
     assert.match(d.summary, /^Your bid ranked 3rd of 3/);
     assert.match(d.summary, /You beat the winning bid on Lead time\./);
   });
@@ -71,7 +71,7 @@ describe("buildDebrief", () => {
     const d = buildDebrief({ ...base, myBidId: "D", winnerBidId: "B" })!;
     assert.equal(d.rank, 1);
     assert.equal(d.winnerRank, 2);
-    assert.match(d.summary, /The buyer chose a bid that ranked 2nd: FairBid ranks the bids, the buyer decides\./);
+    assert.match(d.summary, /The tender owner chose a bid that ranked 2nd: FairBid ranks the bids, the tender owner decides\./);
   });
 
   it("has nothing to say to the winner or before scores exist", () => {

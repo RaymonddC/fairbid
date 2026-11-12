@@ -85,7 +85,7 @@ export function publish(row: Row, viewerSellerId?: string): PublishedQuestion {
 /**
  * Called whenever a question waits for the buyer because their AI could not answer it from
  * the tender: tells the buyer in their linked chat, in the background, so it never slows or
- * fails the seller's request. It never gets the seller's identity.
+ * fails the seller's request. It never gets the bidder's identity.
  */
 export async function onQuestionWaitingForBuyer(question: WaitingQuestion): Promise<void> {
   inBackground(() => notifyBuyerOfSellerQuestion(question.tenderId, question.id, question.question));
@@ -137,9 +137,9 @@ export async function askTenderQuestion({
   if (!t) throw new StepError("Tender not found.");
   if (!isOpen(t)) throw new StepError("Questions close when bidding closes.");
   const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { id: true } });
-  if (!seller) throw new StepError("Only a seller can ask the buyer.");
+  if (!seller) throw new StepError("Only a bidder can ask the tender owner.");
   const asked = await db.tenderQuestion.count({ where: { tenderId, sellerId } });
-  if (!canAskMore(asked)) throw new StepError(`You have asked ${QUESTIONS_PER_SELLER} questions on this tender, the most one seller can.`);
+  if (!canAskMore(asked)) throw new StepError(`You have asked ${QUESTIONS_PER_SELLER} questions on this tender, the most one bidder can.`);
 
   const row = await db.tenderQuestion.create({ data: { tenderId, sellerId, question: checked.text } });
   // No seller id, not even as the actor: the buyer reads this log while bids are sealed.
@@ -157,7 +157,7 @@ export async function askTenderQuestion({
       await appendEvent(tenderId, "ai", "question.answered", { questionId: row.id, answeredBy: "ai", source: r.source, answer: r.value.answer });
     }
   } catch (error) {
-    log.warn("buyer answerer failed; the question waits for the buyer", { tenderId, error: (error as Error).message?.slice(0, 200) });
+    log.warn("tender owner answerer failed; the question waits for the tender owner", { tenderId, error: (error as Error).message?.slice(0, 200) });
   }
   if (!answered.answer) {
     try {

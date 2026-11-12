@@ -124,7 +124,7 @@ export function buildDebrief(input: {
   );
   if (mine.overBudget) {
     sentences.push(
-      `Your delivered cost, ${money(mine.deliveredCents)}, was over the buyer's ${money(budgetCents)} budget, so it ranked after every bid within budget.`,
+      `Your delivered cost, ${money(mine.deliveredCents)}, was over the tender owner's ${money(budgetCents)} budget, so it ranked after every bid within budget.`,
     );
   }
   if (lostOn.length) {
@@ -135,7 +135,7 @@ export function buildDebrief(input: {
   }
   if (beatOn.length) sentences.push(`You beat the winning bid on ${beatOn.join(" and ")}.`);
   if (winnerRank !== 1) {
-    sentences.push(`The buyer chose a bid that ranked ${ordinal(winnerRank)}: FairBid ranks the bids, the buyer decides.`);
+    sentences.push(`The tender owner chose a bid that ranked ${ordinal(winnerRank)}: FairBid ranks the bids, the tender owner decides.`);
   }
 
   return {

@@ -81,7 +81,7 @@ async function transactions(filter: { sellerId?: string; buyerId?: string }): Pr
       out.push({ ...base, kind: "hold", label, amountCents: p.amountCents ?? 0, ref: p.paypalAuthId ?? null });
     } else if (e.kind === "paypal.hold.released") {
       // A hold that lapsed with money unused: it went back to the buyer without a capture.
-      if (p.unusedCents) out.push({ ...base, kind: "release", label: "Hold lapsed, back to the buyer", amountCents: p.unusedCents, ref: p.paypalAuthId ?? null });
+      if (p.unusedCents) out.push({ ...base, kind: "release", label: "Hold lapsed, back to the tender owner", amountCents: p.unusedCents, ref: p.paypalAuthId ?? null });
     } else {
       out.push({ ...base, kind: "payment", label: p.milestone ?? "Payment", amountCents: p.amountCents ?? 0, ref: p.paypalCaptureId ?? null });
       if (p.releasedCents) {

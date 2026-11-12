@@ -27,14 +27,14 @@ export function AskQuestion({ tenderId, bids, scored = false }: { tenderId: stri
           const r = await askQuestionAction(tenderId, text, chosen);
           if (!r.ok) return notifyError(r.error);
           const letters = bids.filter((b) => chosen.includes(b.id)).map((b) => b.letter);
-          notifySuccess([`Question sent to bid${letters.length > 1 ? "s" : ""} ${letters.join(", ")}`, "Each seller sees it on their tender page. Their price stays locked."]);
+          notifySuccess([`Question sent to bid${letters.length > 1 ? "s" : ""} ${letters.join(", ")}`, "Each bidder sees it on their tender page. Their price stays locked."]);
           setText("");
           setChosen([]);
         });
       }}
     >
       <div className="grid gap-0.5">
-        <h3 className="text-sm">Ask sellers a question</h3>
+        <h3 className="text-sm">Ask bidders a question</h3>
         <p className="text-xs text-muted">
           The same words go to every bid you choose. An answer can never change a price.
           {scored ? " The bids are already scored: the answer is kept with the bid, the scores stay as they are." : ""}

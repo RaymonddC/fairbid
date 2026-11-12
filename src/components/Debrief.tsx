@@ -1,5 +1,5 @@
 // Why a losing bid lost: shown to that seller after the award, and to the buyer as
-// "what the other sellers see". The numbers come from src/lib/debrief.ts.
+// "what the other bidders see". The numbers come from src/lib/debrief.ts.
 
 import type { Debrief as DebriefData } from "@/lib/debrief";
 import { countryName, moneyFor } from "@/lib/format";
@@ -19,7 +19,7 @@ const c = {
     winner: "Winner",
     behind: "Points behind",
     behindShort: "Points",
-    note: "Scored blind, on the same numbers the buyer saw. The winning bid's price lines and product details stay private.",
+    note: "Scored blind, on the same numbers the tender owner saw. The winning bid's price lines and product details stay private.",
 };
 
 export function Debrief({ d, heading = true }: { d: DebriefData; heading?: boolean }) {

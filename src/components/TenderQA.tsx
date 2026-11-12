@@ -15,12 +15,12 @@ const field =
   "rounded-lg border border-line-strong bg-surface p-2.5 text-sm outline-none placeholder:text-faint focus:border-dye focus:ring-2 focus:ring-dye/15";
 
 function Answer({ q }: { q: PublishedQuestion }) {
-  if (!q.answer) return <p className="text-sm font-medium text-warn">Waiting for the buyer</p>;
+  if (!q.answer) return <p className="text-sm font-medium text-warn">Waiting for the tender owner</p>;
   return (
     <div className="grid gap-1 border-l-2 border-line-strong pl-3">
       <p className="whitespace-pre-line text-sm">{q.answer}</p>
       <p className="text-xs text-faint">
-        {q.answeredBy === "buyer" ? "Answered by the buyer" : "Answered by the buyer's AI from the tender"}
+        {q.answeredBy === "buyer" ? "Answered by the tender owner" : "Answered by the tender owner's AI from the tender"}
         {q.answeredAt ? `, ${dayTime(q.answeredAt)}` : ""}
       </p>
     </div>
@@ -38,9 +38,9 @@ export function SellerQA({ tenderId, questions, open }: { tenderId: string; ques
   return (
     <Panel className="grid gap-4">
       <div className="grid gap-0.5">
-        <h2 className="text-base">Questions to the buyer</h2>
+        <h2 className="text-base">Questions to the tender owner</h2>
         <p className="text-xs text-muted">
-          Every seller sees each answer, and nobody is told who asked. An answer never changes the tender.
+          Every bidder sees each answer, and nobody is told who asked. An answer never changes the tender.
         </p>
       </div>
 
@@ -50,7 +50,7 @@ export function SellerQA({ tenderId, questions, open }: { tenderId: string; ques
             <li key={q.id} className="grid gap-2 py-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-medium">{q.question}</p>
-                <span className="text-xs text-faint">{q.mine ? "You asked" : "A seller asked"}</span>
+                <span className="text-xs text-faint">{q.mine ? "You asked" : "A bidder asked"}</span>
               </div>
               <Answer q={q} />
             </li>
@@ -72,14 +72,14 @@ export function SellerQA({ tenderId, questions, open }: { tenderId: string; ques
               setText("");
               notifySuccess(
                 r.question.answer
-                  ? ["Answered from the tender", "The buyer's AI answered. Every seller sees it."]
-                  : ["Question sent to the buyer", "It waits for the buyer. The answer goes to every seller."],
+                  ? ["Answered from the tender", "The tender owner's AI answered. Every bidder sees it."]
+                  : ["Question sent to the tender owner", "It waits for the tender owner. The answer goes to every bidder."],
               );
             });
           }}
         >
           <label htmlFor="ask-buyer" className="text-sm font-medium">
-            Ask the buyer
+            Ask the tender owner
           </label>
           <textarea
             id="ask-buyer"
@@ -118,12 +118,12 @@ function AnswerBox({ q }: { q: PublishedQuestion }) {
           const r = await answerSellerQuestionAction(q.id, trimmed);
           if (!r.ok) return notifyError(r.error);
           setText("");
-          notifySuccess(["Answer published", "Every seller sees it on the tender."]);
+          notifySuccess(["Answer published", "Every bidder sees it on the tender."]);
         });
       }}
     >
       <label htmlFor={`answer-${q.id}`} className="sr-only">
-        Your answer to every seller
+        Your answer to every bidder
       </label>
       <textarea
         id={`answer-${q.id}`}
@@ -131,20 +131,20 @@ function AnswerBox({ q }: { q: PublishedQuestion }) {
         value={text}
         maxLength={ANSWER_MAX}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Your answer, published to every seller"
+        placeholder="Your answer, published to every bidder"
         className={field}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted">Answer from what the tender asks. It cannot change the terms.</span>
         <Button type="submit" variant="secondary" loading={pending} disabled={trimmed.length < 2}>
-          Answer every seller
+          Answer every bidder
         </Button>
       </div>
     </form>
   );
 }
 
-/** The buyer's side: sellers' questions, with no names, and an answer box for those the AI left. */
+/** The buyer's side: bidders' questions, with no names, and an answer box for those the AI left. */
 export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; open: boolean }) {
   if (!open && questions.length === 0) return null;
   const waiting = questions.filter((q) => !q.answer).length;
@@ -154,7 +154,7 @@ export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; o
         <div className="grid gap-0.5">
           <h2 className="text-base">Sellers&apos; questions</h2>
           <p className="text-xs text-muted">
-            Who asked stays hidden, even from you, while bids are sealed. Every answer goes to every seller.
+            Who asked stays hidden, even from you, while bids are sealed. Every answer goes to every bidder.
           </p>
         </div>
         {waiting > 0 && <Pill tone="warn">{waiting} waiting for you</Pill>}
@@ -167,7 +167,7 @@ export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; o
             <li key={q.id} className="grid gap-2 py-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-medium">{q.question}</p>
-                <span className="text-xs text-faint">A seller asked, {dayTime(q.askedAt)}</span>
+                <span className="text-xs text-faint">A bidder asked, {dayTime(q.askedAt)}</span>
               </div>
               {q.answer || !open ? <Answer q={q} /> : <AnswerBox q={q} />}
             </li>

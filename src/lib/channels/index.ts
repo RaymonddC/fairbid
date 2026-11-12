@@ -64,7 +64,7 @@ export async function linksOf(sellerId: string) {
 /** A fresh one-time code for the signed-in buyer. The previous code stops working. */
 export async function createBuyerLinkCode(accountId: string, kind: MessageChannel): Promise<LinkOffer> {
   const channel = CHANNELS[kind];
-  if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+  if (kind !== "telegram") throw new StepError("Tender owners can link Telegram only.");
   if (!channel.configured()) throw new StepError(`${channel.label} is not switched on for this site.`);
   const code = newCode();
   await db.$transaction([
@@ -93,7 +93,7 @@ export function buyerChannels() {
 const FOLLOW_UP_MS = 10 * 60_000;
 const MAX_ANSWER = 1000; // the limit addReply keeps
 
-const HOW_TO_LINK = "This chat is not linked to FairBid. Sign in to FairBid as a seller or a buyer, open your dashboard, and press Link on this channel.";
+const HOW_TO_LINK = "This chat is not linked to FairBid. Sign in to FairBid as a bidder or a tender owner, open your dashboard, and press Link on this channel.";
 
 /** Handles one inbound message and returns the text to answer with. Throws only for
  * failures worth a retry (the database); anything a person caused is answered in words. */
@@ -142,14 +142,14 @@ export async function handleInbound(msg: InboundMessage): Promise<string> {
       : [];
     const replyOf = (m: { clarificationId: string; bidId: string }) => replies.find((r) => r.clarificationId === m.clarificationId && r.bidId === m.bidId);
     const open = recent.filter((m) => !replyOf(m));
-    if (open.length > 1) return `You have ${open.length} questions waiting. Reply to the message of the one you are answering, so the answer goes to the right buyer.`;
+    if (open.length > 1) return `You have ${open.length} questions waiting. Reply to the message of the one you are answering, so the answer goes to the right tender owner.`;
     // A second message right after an answer continues it, as people write in bursts.
     const justAnswered = recent.find((m) => {
       const r = replyOf(m);
       return r && Date.now() - r.receivedAt.getTime() < FOLLOW_UP_MS;
     });
     target = open[0] ?? justAnswered ?? null;
-    if (!target) return "There is no question waiting for you. When a buyer asks one, it appears here.";
+    if (!target) return "There is no question waiting for you. When a tender owner asks one, it appears here.";
   }
 
   const account = await db.account.findFirst({ where: { sellerId: link.sellerId }, select: { id: true } });
@@ -190,7 +190,7 @@ async function linkChat(msg: InboundMessage, code: string): Promise<string> {
     db.channelLink.create({ data: { sellerId: row.sellerId, kind: msg.kind, address: msg.address } }),
     db.channelLinkCode.delete({ where: { codeHash: row.codeHash } }),
   ]);
-  return "Linked. Questions from buyers will arrive here. Reply to a question to answer it; the in-app inbox keeps working too.";
+  return "Linked. Questions from tender owners will arrive here. Reply to a question to answer it; the in-app inbox keeps working too.";
 }
 
 async function linkBuyerChat(msg: InboundMessage, row: { codeHash: string; accountId: string }): Promise<string> {
@@ -201,7 +201,7 @@ async function linkBuyerChat(msg: InboundMessage, row: { codeHash: string; accou
     db.buyerChannelLink.create({ data: { accountId: row.accountId, kind: msg.kind, address: msg.address } }),
     db.buyerLinkCode.delete({ where: { codeHash: row.codeHash } }),
   ]);
-  return "Linked. Updates on your tenders arrive here: new sealed bids (the count only), answers from sellers, and sellers' questions, which you can answer by replying.";
+  return "Linked. Updates on your tenders arrive here: new sealed bids (the count only), answers from bidders, and bidders' questions, which you can answer by replying.";
 }
 
 /** Records that a delivery was handled. False when it was already handled before. */

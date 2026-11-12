@@ -294,7 +294,7 @@ function RegisterFields() {
             />
           </Field>
           <p id="reg-paypal-hint" className="col-span-2 -mt-2 text-xs text-muted">
-            A PayPal sandbox business account. Buyers pay you here.
+            A PayPal sandbox business account. Tender owners pay you here.
           </p>
         </div>
       </div>
@@ -309,8 +309,8 @@ function RegisterFields() {
 
 /** Who each demo person is, short enough for the button. */
 const DEMO_LINE: Record<string, string> = {
-  "buyer-anna": "Buyer · Berlin",
-  "seller-sari": "Seller · Yogyakarta",
+  "buyer-anna": "Tender owner · Berlin",
+  "seller-sari": "Bidder · Yogyakarta",
 };
 
 function DemoAccounts({ accounts, next }: { accounts: DemoAccount[]; next: string }) {

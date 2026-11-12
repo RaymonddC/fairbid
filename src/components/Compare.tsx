@@ -41,7 +41,7 @@ export function Compare({ t }: { t: TenderView }) {
         <p className="text-sm text-muted">
           Something unclear in a bid?{" "}
           <Link href={`/tender/${t.id}/review`} className="font-medium text-dye underline underline-offset-4">
-            Ask the sellers first
+            Ask the bidders first
           </Link>
           , so their answers count in the scores.
         </p>
@@ -77,7 +77,7 @@ export function Compare({ t }: { t: TenderView }) {
       <Panel className="grid gap-5 p-0">
         <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-5">
           <div className="grid gap-1">
-            <h2 className="text-xl">{delivered ? `What each bid really costs in ${t.spec.deliverTo.split(",")[0] || "Berlin"}` : "What sellers quoted"}</h2>
+            <h2 className="text-xl">{delivered ? `What each bid really costs in ${t.spec.deliverTo.split(",")[0] || "Berlin"}` : "What bidders quoted"}</h2>
             <p className="max-w-[60ch] text-sm text-muted">
               {delivered
                 ? `Goods, shipping, import duty and broker fees${reclaimVat ? "" : ", plus import VAT"}. The dashed line is your ${eur(t.budgetCents)} budget.`

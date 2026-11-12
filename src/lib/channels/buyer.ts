@@ -52,23 +52,23 @@ export function newBidText(tenderTitle: string, count: number): string {
   return `FairBid: ${which} arrived on "${short(tenderTitle, 120)}". Prices stay sealed until you close bidding.`;
 }
 
-/** A seller answered the buyer's clarification. Bid letter only, never the seller's name. */
+/** A seller answered the buyer's clarification. Bid letter only, never the bidder's name. */
 export function replyText(tenderTitle: string, letter: string, answer: string): string {
   return `FairBid: Bid ${letter} answered your question on "${short(tenderTitle, 120)}":\n\n${short(answer.trim(), 1000)}`;
 }
 
 export function sellerQuestionText(tenderTitle: string, question: string): string {
   return [
-    `FairBid: A seller asked about "${short(tenderTitle, 120)}":`,
+    `FairBid: A bidder asked about "${short(tenderTitle, 120)}":`,
     "",
     short(question.trim(), 1000),
     "",
-    "Reply to this message to answer every seller. The seller who asked stays anonymous.",
+    "Reply to this message to answer every bidder. The bidder who asked stays anonymous.",
   ].join("\n");
 }
 
 export const BUYER_HELP =
-  "This chat gets your FairBid tender updates. To answer a seller's question, use Reply on the question message itself. Everything else happens in FairBid.";
+  "This chat gets your FairBid tender updates. To answer a bidder's question, use Reply on the question message itself. Everything else happens in FairBid.";
 
 export interface DeliverDeps {
   send(address: string, text: string, opts: { expectReply: boolean }): Promise<{ externalId: string }>;
@@ -83,7 +83,7 @@ export async function deliverToBuyer(address: string, text: string, expectReply:
     await deps.record(externalId);
     return true;
   } catch (error) {
-    deps.warn("buyer channel send failed", { error: error instanceof Error ? error.message : String(error) });
+    deps.warn("tender owner channel send failed", { error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }

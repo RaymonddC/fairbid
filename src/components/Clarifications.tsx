@@ -18,7 +18,7 @@ export function Clarifications({ t }: { t: TenderView }) {
     return (
       <Panel className="grid justify-items-start gap-2">
         <h2 className="text-base">The AI review starts when bidding closes</h2>
-        <p className="text-sm text-muted">Every bid is checked against your request at once, so no seller gets an early hint.</p>
+        <p className="text-sm text-muted">Every bid is checked against your request at once, so no bidder gets an early hint.</p>
         <Link href={`/tender/${t.id}`} className="text-sm font-medium text-dye underline underline-offset-4">
           Go to sealed bids
         </Link>
@@ -46,7 +46,7 @@ export function Clarifications({ t }: { t: TenderView }) {
                 ? "A winner was chosen without questions."
                 : scored
                 ? "The bids were scored without questions. You can still ask before you choose a winner."
-                : "The review found nothing missing. If something is unclear to you, ask the sellers before you score the bids."}
+                : "The review found nothing missing. If something is unclear to you, ask the bidders before you score the bids."}
             </p>
           </Panel>
           {canAsk && <AskQuestion tenderId={t.id} bids={askBids} scored={scored} />}
@@ -54,9 +54,9 @@ export function Clarifications({ t }: { t: TenderView }) {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
           <section className="grid content-start gap-3" aria-labelledby="q-title">
-            <SectionTitle id="q-title">Questions to sellers</SectionTitle>
+            <SectionTitle id="q-title">Questions to bidders</SectionTitle>
             <p className="text-sm text-muted">
-              Each bid was checked against your request. When something is missing, the same question goes to every seller it applies to.
+              Each bid was checked against your request. When something is missing, the same question goes to every bidder it applies to.
             </p>
             <ul className="notice divide-y divide-line overflow-hidden rounded-xl">
               {t.clarifications.map((c) => {

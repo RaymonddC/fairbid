@@ -5,7 +5,7 @@ import { moneyFor } from "@/lib/format";
 import type { MonthFlow } from "@/lib/cashflow";
 
 const SERIES = [
-  { key: "paidCents", label: "Paid to sellers", color: "bg-chart-1", stroke: "var(--chart-1)" },
+  { key: "paidCents", label: "Paid to bidders", color: "bg-chart-1", stroke: "var(--chart-1)" },
   { key: "heldCents", label: "Held by PayPal at month end", color: "bg-chart-2", stroke: "var(--chart-2)" },
 ] as const;
 

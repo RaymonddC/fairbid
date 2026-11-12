@@ -79,7 +79,7 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
           <Row label="Goods" value={eur(bid.goodsCents)} />
           <Row label="Shipping to the door" value={eur(bid.shippingCents)} />
           <div className="flex justify-between border-t border-line pt-2 font-semibold">
-            <dt>{phased ? "Order paid through PayPal" : "PayPal holds for the seller"}</dt>
+            <dt>{phased ? "Order paid through PayPal" : "PayPal holds for the bidder"}</dt>
             <dd className="num">{eur(bid.holdCents)}</dd>
           </div>
           <Row label="Import duty, paid by you at import" value={eur(bid.dutyCents)} muted />
@@ -441,8 +441,8 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
 
       {t.debriefs.length > 0 && (
         <section className="grid gap-3" aria-labelledby="debrief-title">
-          <SectionTitle id="debrief-title" aside={`${t.debriefs.length} seller${t.debriefs.length === 1 ? "" : "s"} told why`}>
-            What the other sellers see
+          <SectionTitle id="debrief-title" aside={`${t.debriefs.length} bidder${t.debriefs.length === 1 ? "" : "s"} told why`}>
+            What the other bidders see
           </SectionTitle>
           <p className="max-w-[70ch] text-sm text-muted">
             Every seller who lost now sees why, on their own bid page and through their agent: their rank, their score on each of your criteria

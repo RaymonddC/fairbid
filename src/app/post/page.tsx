@@ -14,7 +14,7 @@ export default async function Page() {
       <PageHeader
         crumbs={[{ href: "/", label: "Tenders" }]}
         title="Post a tender"
-        description="Say what you need in your own words. Sellers bid sealed, and every bid is compared at what it costs delivered."
+        description="Say what you need in your own words. Bidders bid sealed, and every bid is compared at what it costs delivered."
       />
       <PostTender />
     </>

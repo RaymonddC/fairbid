@@ -55,7 +55,7 @@ test("texts: a new bid says the count only", () => {
 test("texts: a reply names the bid letter, a seller question invites a reply", () => {
   assert.match(replyText("Batik scarves", "C", " Yes, hand-drawn. "), /Bid C answered your question on "Batik scarves":\n\nYes, hand-drawn\.$/);
   const q = sellerQuestionText("Batik scarves", "Is cotton fine?");
-  assert.match(q, /A seller asked about "Batik scarves"/);
+  assert.match(q, /A bidder asked about "Batik scarves"/);
   assert.match(q, /Reply to this message to answer every seller/);
 });
 

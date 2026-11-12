@@ -81,7 +81,7 @@ export function PostTender() {
         setError(r.error);
         return notifyError(r.error);
       }
-      notifySuccess(["Tender published", "Sellers can see it now. Bids stay sealed until it closes."]);
+      notifySuccess(["Tender published", "Bidders can see it now. Bids stay sealed until it closes."]);
       router.push(`/tender/${r.tenderId}`);
     });
 
@@ -102,7 +102,7 @@ export function PostTender() {
         <p id="need-hint" className={`-mt-2 text-xs ${tooShort && need.length > 0 ? "text-flag" : "text-muted"}`}>
           {tooShort ? "Write at least a sentence: what, how many, by when and roughly what budget." : "Plain words are fine. The AI turns them into specs and criteria."}
         </p>
-        <PhotoPicker photos={photos} onChange={setPhotos} label="Reference photos (optional)" hint="A photo of the style, colour or size you want helps sellers price the right thing." />
+        <PhotoPicker photos={photos} onChange={setPhotos} label="Reference photos (optional)" hint="A photo of the style, colour or size you want helps bidders price the right thing." />
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant={phase === "review" ? "secondary" : "primary"}
@@ -201,7 +201,7 @@ export function PostTender() {
 
             {photos.length > 0 && (
               <div className="grid gap-2">
-                <h3 className="text-sm font-semibold">Reference photos sellers will see</h3>
+                <h3 className="text-sm font-semibold">Reference photos bidders will see</h3>
                 <PhotoStrip photos={photos} label="Reference photos" size="sm" />
               </div>
             )}
@@ -238,7 +238,7 @@ export function PostTender() {
                   />
                 </div>
               ))}
-              <p className="text-xs text-muted">Sellers see these weights. Who replies first never counts.</p>
+              <p className="text-xs text-muted">Bidders see these weights. Who replies first never counts.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">

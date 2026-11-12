@@ -37,7 +37,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
                   <Pill>Price hidden</Pill>
                 </li>
               ))}
-              {t.bidCount === 0 && <li className="px-4 py-6 text-center text-sm text-muted">No bids yet. Sellers can see this tender now.</li>}
+              {t.bidCount === 0 && <li className="px-4 py-6 text-center text-sm text-muted">No bids yet. Bidders can see this tender now.</li>}
             </ul>
           ) : (
             <>
@@ -83,7 +83,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
                 <ActionButton
                   action={() => closeBiddingAction(t.id)}
                   busy="Opening the bids…"
-                  success={["Bidding closed", "Every bid is open. The AI review has sent its questions to sellers."]}
+                  success={["Bidding closed", "Every bid is open. The AI review has sent its questions to bidders."]}
                 >
                   Close bidding now
                 </ActionButton>
@@ -93,10 +93,10 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
                 <ActionButton
                   action={() => inviteAgentsAction(t.id)}
                   variant="secondary"
-                  busy="Seller agents are bidding…"
-                  success={["Seller agents have bid", "Four seller agents read your tender over MCP and sealed their bids."]}
+                  busy="Bidder agents are bidding…"
+                  success={["Bidder agents have bid", "Four bidder agents read your tender over MCP and sealed their bids."]}
                 >
-                  Invite seller agents
+                  Invite bidder agents
                 </ActionButton>
               )}
             </>
@@ -125,7 +125,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
             <>
               <h2 className="text-base">Next: the AI review</h2>
               <p className="text-sm text-muted">
-                Every bid was checked against your request{questions ? `, and ${questions} questions went to sellers` : ""}.{" "}
+                Every bid was checked against your request{questions ? `, and ${questions} questions went to bidders` : ""}.{" "}
                 {t.waitingReplies > 0 ? `${t.waitingReplies} replies still waiting.` : "Nothing is waiting."} Answers can&apos;t change a
                 price.
               </p>
@@ -136,10 +136,10 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
                 <ActionButton
                   action={() => inviteAgentsAction(t.id)}
                   variant="secondary"
-                  busy="Seller agents are answering…"
-                  success={["Seller agents answered", "Their replies are with the questions. No price changed."]}
+                  busy="Bidder agents are answering…"
+                  success={["Bidder agents answered", "Their replies are with the questions. No price changed."]}
                 >
-                  Let seller agents answer
+                  Let bidder agents answer
                 </ActionButton>
               )}
               <Link
@@ -152,7 +152,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
           )}
         </Panel>
         <div className="grid gap-1 px-1 text-sm">
-          <h2 className="text-sm">Seller names stay hidden</h2>
+          <h2 className="text-sm">Bidder names stay hidden</h2>
           <p className="text-muted">Bids are scored by letter. You see who they are after you choose a winner.</p>
         </div>
       </aside>

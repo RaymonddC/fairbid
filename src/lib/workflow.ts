@@ -34,7 +34,7 @@ import { DESTINATIONS } from "./format";
 /** Only the buyer who posted a tender may run it. Throws for anyone else. */
 export async function assertOwner(tenderId: string, buyerId: string) {
   const t = await db.tender.findUnique({ where: { id: tenderId }, select: { buyerId: true } });
-  if (!t || t.buyerId !== buyerId) throw new StepError("This tender belongs to another buyer.");
+  if (!t || t.buyerId !== buyerId) throw new StepError("This tender belongs to another tender owner.");
 }
 
 export type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -210,9 +210,9 @@ export async function askQuestion(tenderId: string, question: string, bidIds: st
   if (text.length < 10) throw new StepError("Write the question in a full sentence.");
   if (text.length > 600) throw new StepError("Keep the question under 600 characters.");
   const status = await statusOf(tenderId);
-  if (status === "OPEN" || status === "DRAFT") throw new StepError("You can ask once bidding closes, so no seller gets an early hint.");
+  if (status === "OPEN" || status === "DRAFT") throw new StepError("You can ask once bidding closes, so no bidder gets an early hint.");
   if (!["CLOSED", "REVIEWING", "CLARIFYING", "PRICED", "SCORED"].includes(status)) {
-    throw new StepError("A winner is already chosen, so questions to sellers are closed.");
+    throw new StepError("A winner is already chosen, so questions to bidders are closed.");
   }
   const unique = [...new Set(bidIds)];
   if (unique.length === 0) throw new StepError("Choose at least one bid to ask.");
@@ -248,7 +248,7 @@ export async function addReply(clarificationId: string, bidId: string, body: str
   });
   // The in-app event is unchanged; a reply from a chat also names it.
   await appendEvent(c.tenderId, actor, "clarification.replied", channel === "inapp" ? { clarificationId, bidId } : { clarificationId, bidId, channel });
-  // After close, so the bid letter is all the buyer's chat learns; never the seller's name.
+  // After close, so the bid letter is all the buyer's chat learns; never the bidder's name.
   inBackground(() => notifyBuyerOfReply(clarificationId, bidId, text));
 }
 
@@ -924,15 +924,15 @@ export function isUniqueViolation(error: unknown): boolean {
 }
 
 const PAYPAL_MESSAGES: Record<string, string> = {
-  PAYEE_ACCOUNT_INVALID: "PayPal does not recognise the seller's PayPal email, so it cannot pay them. Ask the seller to check the email in their account.",
-  PAYEE_ACCOUNT_RESTRICTED: "PayPal cannot pay the seller's account right now.",
-  AUTHORIZATION_EXPIRED: "The PayPal hold has expired, so it can no longer pay the seller.",
-  AUTHORIZATION_VOIDED: "PayPal has cancelled this hold, so it can no longer pay the seller.",
+  PAYEE_ACCOUNT_INVALID: "PayPal does not recognise the bidder's PayPal email, so it cannot pay them. Ask the bidder to check the email in their account.",
+  PAYEE_ACCOUNT_RESTRICTED: "PayPal cannot pay the bidder's account right now.",
+  AUTHORIZATION_EXPIRED: "The PayPal hold has expired, so it can no longer pay the bidder.",
+  AUTHORIZATION_VOIDED: "PayPal has cancelled this hold, so it can no longer pay the bidder.",
   PERMISSION_DENIED: "PayPal refused: this needs PayPal Multiparty.",
   ORDER_NOT_APPROVED: "The order was not approved on PayPal yet.",
-  INSTRUMENT_DECLINED: "PayPal declined the buyer's payment method. Try another one in the PayPal window.",
+  INSTRUMENT_DECLINED: "PayPal declined the tender owner's payment method. Try another one in the PayPal window.",
   TRANSACTION_REFUSED: "PayPal refused the hold, so nothing is reserved. Try another payment method in the PayPal window.",
-  PAYER_ACTION_REQUIRED: "PayPal needs the buyer to finish a step in the PayPal window first.",
+  PAYER_ACTION_REQUIRED: "PayPal needs the tender owner to finish a step in the PayPal window first.",
   MAX_CAPTURE_AMOUNT_EXCEEDED: "That is more than the hold has left.",
 };
 
