@@ -4,7 +4,10 @@
 // session and checks the role before doing anything (ARCHITECTURE.md).
 
 import { refresh } from "next/cache";
+import { after } from "next/server";
 import { keysBySellerFromEnv, runBots } from "@/lib/agents/bots";
+import { MAX_BRIEF } from "@/lib/agents/brief";
+import { answerAgentQuestions, runAgentsForTender, runOwnAgent } from "@/lib/agents/own-agent";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
@@ -65,7 +68,11 @@ async function run<T extends object>(fn: () => Promise<T | void>): Promise<Resul
 }
 
 export async function closeBiddingAction(tenderId: string) {
-  return run(async () => closeBidding(tenderId, (await owner(tenderId)).id));
+  return run(async () => {
+    await closeBidding(tenderId, (await owner(tenderId)).id);
+    // The review may have sent questions: sellers' own agents answer what their brief covers.
+    after(() => answerAgentQuestions(tenderId));
+  });
 }
 
 /** Demo only: a trader who has not answered yet replies now. */
@@ -81,7 +88,10 @@ export async function simulateReplyAction(clarificationId: string, bidId: string
 }
 
 export async function askQuestionAction(tenderId: string, question: string, bidIds: string[]) {
-  return run(async () => askQuestion(tenderId, question, bidIds, (await owner(tenderId)).id));
+  return run(async () => {
+    await askQuestion(tenderId, question, bidIds, (await owner(tenderId)).id);
+    after(() => answerAgentQuestions(tenderId));
+  });
 }
 
 export async function sellerReplyAction(clarificationId: string, body: string) {
@@ -132,6 +142,37 @@ export async function revokeAgentKeyAction(id: string) {
 
 const agentKeyLimiter = createLimiter(10, 10 * 60_000);
 
+/** The signed-in seller tells FairBid's own agent what they make, and switches it on or off.
+ * Switched on, it looks at every open tender right after the response. */
+export async function saveAgentBriefAction(brief: string, on: boolean) {
+  return run(async () => {
+    const user = await as("seller");
+    const text = typeof brief === "string" ? brief.trim().slice(0, MAX_BRIEF) : "";
+    const enabled = on === true;
+    if (enabled && text.length < 20) throw new StepError("Describe what you make in a sentence or more: what it is, the price per piece, shipping and how long it takes.");
+    await db.seller.update({ where: { id: user.sellerId! }, data: { agentBrief: text || null, agentOn: enabled, agentUpdatedAt: new Date() } });
+    if (enabled) after(() => runOwnAgent(user.sellerId!));
+  });
+}
+
+const agentRunLimiter = createLimiter(20, 60 * 60_000);
+
+/** "Run now": the seller's own agent looks at open tenders and waiting questions while they wait. */
+export async function runAgentNowAction() {
+  return run(async () => {
+    const user = await as("seller");
+    if (!agentRunLimiter.hit(user.id)) throw new StepError("Your agent has run often this hour. Wait a few minutes.");
+    const seller = await db.seller.findUnique({ where: { id: user.sellerId! }, select: { agentOn: true, agentBrief: true } });
+    if (!seller?.agentOn || !seller.agentBrief) throw new StepError("Switch on \"Bid for me automatically\" and save first.");
+    const steps = await runOwnAgent(user.sellerId!);
+    return {
+      bids: steps.filter((s) => s.kind === "agent.bid").length,
+      skipped: steps.filter((s) => s.kind === "agent.skipped").length,
+      answers: steps.filter((s) => s.kind === "agent.answered").length,
+    };
+  });
+}
+
 export async function scoreAction(tenderId: string) {
   return run(async () => scoreTender(tenderId, (await owner(tenderId)).id));
 }
@@ -165,7 +206,12 @@ export async function submitBidAction(tenderId: string, input: BidInput) {
 }
 
 export async function publishTenderAction(input: TenderInput) {
-  return run(async () => ({ tenderId: await publishTender(input, (await as("buyer")).id) }));
+  return run(async () => {
+    const tenderId = await publishTender(input, (await as("buyer")).id);
+    // Sellers' own agents look at the new tender after the response: a failing agent never slows or breaks publishing.
+    after(() => runAgentsForTender(tenderId));
+    return { tenderId };
+  });
 }
 
 // Each AI call costs money, so a person gets a fair number per hour, per instance.
