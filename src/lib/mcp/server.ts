@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { db } from "../db";
 import { getSellerTenderView } from "../tender-data";
+import { QUESTION_MAX, QUESTIONS_PER_SELLER, askTenderQuestion, listTenderQuestions, type PublishedQuestion } from "../tender-questions";
 import { StepError, addReply, submitBid, toResult } from "../workflow";
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -25,6 +26,15 @@ async function guarded(fn: () => Promise<unknown>): Promise<ToolResult> {
 
 /** Money in the tender's currency as an agent reads it: whole units, not cents. */
 const units = (cents: number) => Math.round(cents) / 100;
+
+const qaOut = (q: PublishedQuestion) => ({
+  question_id: q.id,
+  question: q.question,
+  asked_by_me: q.mine ?? false,
+  answer: q.answer,
+  answered_by: q.answeredBy === "ai" ? "the buyer's AI, from the tender" : q.answeredBy === "buyer" ? "the buyer" : null,
+  waiting_for_buyer: q.answer === null,
+});
 
 export function buildSellerServer(sellerId: string): McpServer {
   const server = new McpServer({ name: "fairbid-sellers", version: "1.0.0" });
@@ -69,7 +79,7 @@ export function buildSellerServer(sellerId: string): McpServer {
     {
       title: "Read a tender",
       description:
-        "The full tender: the buyer's need, the scoring criteria with their rubrics, duty and VAT rates, your own sealed bid if any, and questions the buyer sent you. Other sellers' bids are never shown.",
+        "The full tender: the buyer's need, the scoring criteria with their rubrics, duty and VAT rates, your own sealed bid if any, questions the buyer sent you, and sellers' questions to the buyer with the published answers (questions_to_buyer). Other sellers' bids are never shown.",
       inputSchema: { tender_id: z.string().describe("From list_open_tenders") },
       annotations: { readOnlyHint: true },
     },
@@ -104,8 +114,21 @@ export function buildSellerServer(sellerId: string): McpServer {
             submitted_at: v.myBid.submittedAt,
           },
           questions: v.questions.map((q) => ({ clarification_id: q.id, question: q.question, my_reply: q.myReply })),
+          // Sellers' questions to the buyer and the published answers, the same for every seller.
+          questions_to_buyer: (await listTenderQuestions(v.id, sellerId)).map(qaOut),
         };
       }),
+  );
+
+  server.registerTool(
+    "ask_buyer",
+    {
+      title: "Ask the buyer a question",
+      description: `Asks the buyer a question about an open tender before you bid, for example about size, material or packing. The answer is published to every seller, and nobody is told who asked. The buyer's AI answers at once when the published tender settles it; otherwise the question waits for the buyer: read it later in get_tender's questions_to_buyer. An answer never changes the tender's terms. At most ${QUESTIONS_PER_SELLER} questions per tender, ${QUESTION_MAX} characters each.`,
+      inputSchema: { tender_id: z.string(), question: z.string().min(1).max(QUESTION_MAX) },
+      annotations: { destructiveHint: false },
+    },
+    ({ tender_id, question }) => guarded(async () => qaOut(await askTenderQuestion({ tenderId: tender_id, sellerId, question, via: "agent" }))),
   );
 
   server.registerTool(

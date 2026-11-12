@@ -44,6 +44,16 @@ function describe(
         title: `Bid ${letterOf(p.bidId)} replied to a question`,
         detail: p.channel === "telegram" ? "Answered from Telegram." : p.channel === "whatsapp" ? "Answered from WhatsApp." : undefined,
       };
+    case "question.asked":
+      return {
+        title: "A seller asked a question",
+        detail: `“${String(p.question ?? "").slice(0, 160)}” Who asked stays hidden, and the answer goes to every seller.`,
+      };
+    case "question.answered":
+      return {
+        title: p.answeredBy === "buyer" ? "You answered a seller's question, for every seller" : "Your AI answered a seller's question from the tender",
+        detail: `${String(p.answer ?? "").slice(0, 200)}${p.answeredBy === "buyer" ? "" : " An answer never changes the tender's terms."}`,
+      };
     case "tender.scored":
       return {
         title: "Bids priced at delivered cost and scored",

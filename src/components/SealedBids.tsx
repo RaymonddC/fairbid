@@ -11,7 +11,7 @@ import { Panel, Pill, SectionTitle, linkButton } from "./ui";
 // Shared column template so the header row and the bid rows line up.
 const OPEN_COLS = "sm:grid-cols-[minmax(0,1fr)_100px_140px]";
 
-export function SealedBids({ t, agents = false }: { t: TenderView; agents?: boolean }) {
+export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: boolean; qa?: React.ReactNode }) {
   const eur = moneyFor(t.currency);
   const questions = t.clarifications.length;
 
@@ -61,6 +61,7 @@ export function SealedBids({ t, agents = false }: { t: TenderView; agents?: bool
             ? "Prices and photos stay sealed until bidding closes, so a fast reply never beats a good one."
             : "Quoted prices only. Shipping, import duty and fees come next, and they change the order."}
         </p>
+        {qa}
       </section>
 
       <aside className="grid content-start gap-4">

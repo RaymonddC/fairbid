@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { clampDraft, draftFrom, type Draft } from "../draft";
 import { runRole, type AiResult, type UserPart } from "./model";
-import { BLIND_SCORER, COLLUSION_REASONER, HS_CLASSIFIER, PROPOSAL_REVIEWER, TENDER_WRITER } from "./prompts";
+import { BLIND_SCORER, BUYER_ANSWERER, COLLUSION_REASONER, HS_CLASSIFIER, PROPOSAL_REVIEWER, TENDER_WRITER } from "./prompts";
 
 // ── 1. Tender writer ─────────────────────────────────────────────────────────
 
@@ -209,4 +209,66 @@ export async function explainPair(input: PairInput): Promise<AiResult<string>> {
   );
   const reason = r.value.reason.trim().slice(0, 400);
   return reason ? { value: reason, source: r.source } : { value: PAIR_FIXTURE, source: "fixture" };
+}
+
+// ── 6. Buyer answerer ────────────────────────────────────────────────────────
+
+/** The tender as published: the only thing the buyer's AI may answer from. */
+export interface PublishedTender {
+  title: string;
+  needText: string;
+  spec: { item: string; quantity: number; deliverTo: string; deliveryDays: number };
+  criteria: { name: string; weightPct: number; rubric: string }[];
+  budgetCents: number;
+  currency: string;
+  destinationCountry: string;
+  closesAt: string;
+  referencePhotoCount: number;
+}
+
+export const AnswerSchema = z.object({ answerable: z.boolean(), answer: z.string() });
+export type BuyerAnswer = z.infer<typeof AnswerSchema>;
+
+const NOT_ANSWERABLE: BuyerAnswer = { answerable: false, answer: "" };
+
+const units = (cents: number, currency: string) =>
+  `${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${currency}`;
+
+/**
+ * The scripted answerer: a few plain facts the published tender settles, found by keyword.
+ * Anything else, and anything about other bids or sellers, waits for the buyer.
+ */
+export function answerFromTender(question: string, t: PublishedTender): BuyerAnswer {
+  const q = question.toLowerCase();
+  if (/\b(other|another|competing)\s+(bids?|sellers?|offers?|quotes?)\b|competitor|lowest bid|who else|how many (bids|sellers)/.test(q)) {
+    return NOT_ANSWERABLE;
+  }
+  if (/criteri|scor(e|ed|ing)|weight|judg|evaluat|\brank/.test(q)) {
+    const list = t.criteria.map((c) => `${c.name} ${c.weightPct}%`).join(", ");
+    return list ? { answerable: true, answer: `Bids are scored on ${list}. Cost is compared at the price delivered to the buyer's door.` } : NOT_ANSWERABLE;
+  }
+  if (/budget|how much|maximum price|max price|spend/.test(q)) {
+    return { answerable: true, answer: `The published budget is ${units(t.budgetCents, t.currency)} for the whole order. Bids are compared at delivered cost.` };
+  }
+  if (/deadline|how long|how many days|lead time|by when|\bwhen\b|\bdays?\b|\bweeks?\b/.test(q)) {
+    return { answerable: true, answer: `Delivery is needed within ${t.spec.deliveryDays} days of bidding closing. Bidding closes on ${t.closesAt.slice(0, 10)}.` };
+  }
+  if (/\bwhere\b|address|destination|deliver(ed|y)? to|ship(ped)? to|location|\bcity\b/.test(q)) {
+    const place = t.spec.deliverTo.includes(t.destinationCountry) ? t.spec.deliverTo : `${t.spec.deliverTo}, ${t.destinationCountry}`;
+    return t.spec.deliverTo ? { answerable: true, answer: `Delivery is to ${place}.` } : NOT_ANSWERABLE;
+  }
+  if (/how many|quantity|pieces|\bunits\b|\bpcs\b|number of/.test(q)) {
+    return t.spec.quantity > 0 ? { answerable: true, answer: `The tender asks for ${t.spec.quantity} × ${t.spec.item}.` } : NOT_ANSWERABLE;
+  }
+  return NOT_ANSWERABLE;
+}
+
+/** Answers a seller's question from the published tender, or says it has to wait for the buyer. */
+export async function answerAsBuyer(question: string, tender: PublishedTender): Promise<AiResult<BuyerAnswer>> {
+  const r = await runRole(
+    { role: "buyer_answerer", system: BUYER_ANSWERER, user: JSON.stringify({ tender, question }, null, 1), schema: AnswerSchema, effort: "low" },
+    () => answerFromTender(question, tender),
+  );
+  const answer = r.value.answer.trim().slice(0, 800);
+  return { ...r, value: r.value.answerable && answer ? { answerable: true, answer } : NOT_ANSWERABLE };
 }
