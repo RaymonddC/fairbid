@@ -18,19 +18,19 @@ import { listAgentKeys } from "@/lib/mcp/agent-keys";
 import { publicBaseUrl } from "@/lib/public-url";
 import { getUser } from "@/lib/session";
 import { getTenderView } from "@/lib/tender-data";
-import { atLeast, rankBids, type TenderSummary } from "@/lib/views";
+import { rankBids, type TenderSummary } from "@/lib/views";
 
 export const metadata = { title: "Dashboard · FairBid" };
 
 export default async function Home() {
   const user = await getUser();
   if (!user) redirect("/login");
-  return user.role === "buyer" ? <BuyerHome name={user.name} buyerId={user.id} /> : <SellerHome sellerId={user.sellerId!} name={user.name} />;
+  return user.role === "buyer" ? <BuyerHome buyerId={user.id} /> : <SellerHome sellerId={user.sellerId!} name={user.name} />;
 }
 
 // ── Buyer ────────────────────────────────────────────────────────────────────
 
-async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
+async function BuyerHome({ buyerId }: { buyerId: string }) {
   const [cf, links] = await Promise.all([buyerCashflow(buyerId), buyerLinksOf(buyerId)]);
   const active = cf.tenders.filter((t) => t.status !== "COMPLETE" && t.status !== "CANCELLED");
   const done = cf.tenders.filter((t) => t.status === "COMPLETE");
@@ -42,8 +42,7 @@ async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
   return (
     <>
       <PageHeader
-        title={`Good morning, ${name}`}
-        description="Your tenders and your money: what PayPal holds for you, what you have paid, and what is due next."
+        title="Your tenders"
         actions={
           <Link href="/post" className={linkButton.primary}>
             Post a tender
@@ -51,78 +50,46 @@ async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
         }
       />
       <div className="grid gap-8">
-        <dl className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <Kpi tone="dye" label="Held by PayPal" value={total("heldCents")} note={any("heldCents") ? "Still in your account, reserved" : "Nothing on hold right now"} />
-          <Kpi
-            tone="ok"
-            label="Paid to sellers"
-            value={total("paidCents")}
-            note={any("releasedCents") ? `${total("releasedCents")} released, never charged` : "Only after you confirm a step"}
-          />
-          <Kpi tone="sun" label="Saved against lowest quotes" value={total("savedCents")} note="Compared at delivered cost" />
-          <Kpi tone="warn" label="Waiting on sellers" value={String(cf.waiting)} note={cf.waiting ? "Questions not answered yet" : "No open questions"} />
+        {/* The money, as one ruled ledger: no cards, no coloured dots. */}
+        <dl className={LEDGER}>
+          <Kpi label="Held by PayPal" value={total("heldCents")} note={any("heldCents") ? "In your account, reserved for the bidder" : "Nothing on hold"} />
+          <Kpi label="Paid to bidders" value={total("paidCents")} note={any("releasedCents") ? `${total("releasedCents")} released, never charged` : "Only when you confirm a step"} />
+          <Kpi label="Saved against lowest quotes" value={total("savedCents")} note="At delivered cost" />
+          <Kpi label="Questions waiting" value={String(cf.waiting)} note={cf.waiting ? "On bidders to answer" : "None"} />
         </dl>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <Panel className="grid content-start gap-4">
-            <div className="grid gap-0.5">
-              <h2 className="text-base">Cash flow</h2>
-              <p className="text-sm text-muted">Last four months. Money leaves your account only when you confirm a step.</p>
-            </div>
-            {charts.map((c) => (
-              <div key={c.currency} className="grid gap-2">
-                {charts.length > 1 && <h3 className="text-sm text-muted">In {c.currency}</h3>}
-                <CashflowChart months={c.months} currency={c.currency} />
-              </div>
-            ))}
-          </Panel>
-          <UpcomingPanel items={cf.upcoming} buyer />
-        </div>
-
-        <ChannelLinker
-          audience="buyer"
-          channels={buyerChannels().map((c) => {
-            const l = links.find((x) => x.kind === c.kind);
-            return { ...c, linked: l ? maskAddress(c.kind, l.address) : null };
-          })}
-        />
+        {cf.upcoming.length > 0 && <UpcomingPanel items={cf.upcoming} buyer />}
 
         <section className="grid gap-3" aria-labelledby="active-title">
           <SectionTitle id="active-title">Active tenders</SectionTitle>
           {active.length === 0 ? (
-            <p className="notice rounded-xl p-5 text-sm text-muted">
-              No active tenders.{" "}
+            <p className="text-sm text-muted">
+              None yet.{" "}
               <Link href="/post" className="font-medium text-dye underline underline-offset-4">
-                Post one
+                Post a tender
               </Link>{" "}
               to get sealed bids.
             </p>
           ) : (
-            <ul className="grid gap-3">
+            <ul className="notice divide-y divide-line">
               {active.map((t) => (
                 <li key={t.id}>
-                  <TenderCard t={t} />
+                  <TenderRow t={t} />
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <TransactionsGrid txs={cf.transactions} title="Transactions" showSeller />
-
-        <section className="grid gap-3" aria-labelledby="done-title">
-          <SectionTitle id="done-title" aside="Paid through PayPal on delivery">
-            Completed tenders
-          </SectionTitle>
-          {done.length === 0 ? (
-            <p className="text-sm text-muted">Completed tenders appear here with what you paid and saved.</p>
-          ) : (
-            <ul className="notice divide-y divide-line overflow-hidden rounded-xl">
+        {done.length > 0 && (
+          <section className="grid gap-3" aria-labelledby="done-title">
+            <SectionTitle id="done-title">Completed</SectionTitle>
+            <ul className="notice divide-y divide-line">
               {done.map((t) => (
                 <li key={t.id}>
                   <Link
                     href={`/tender/${t.id}/award`}
-                    className="grid gap-x-4 gap-y-0.5 px-5 py-3 text-sm hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_110px]"
+                    className="grid gap-x-4 gap-y-0.5 px-5 py-3 text-sm hover:bg-raised sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_110px]"
                   >
                     <span className="font-medium">{t.title}</span>
                     <span className="text-muted">{t.winnerName}</span>
@@ -132,10 +99,49 @@ async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </section>
+        )}
+
+        {/* Detail on request: the chart and the full payment record. */}
+        <More title="Cash flow, last four months">
+          <p className="text-sm text-muted">Money leaves your account only when you confirm a step.</p>
+          {charts.map((c) => (
+            <div key={c.currency} className="grid gap-2">
+              {charts.length > 1 && <h3 className="text-sm text-muted">In {c.currency}</h3>}
+              <CashflowChart months={c.months} currency={c.currency} />
+            </div>
+          ))}
+        </More>
+        {cf.transactions.length > 0 && (
+          <More title={`Every payment (${cf.transactions.length})`}>
+            <TransactionsGrid txs={cf.transactions} title="Payments" showSeller />
+          </More>
+        )}
+
+        <ChannelLinker
+          audience="buyer"
+          channels={buyerChannels().map((c) => {
+            const l = links.find((x) => x.kind === c.kind);
+            return { ...c, linked: l ? maskAddress(c.kind, l.address) : null };
+          })}
+        />
       </div>
     </>
+  );
+}
+
+/** A section that stays folded until asked for, so the dashboard shows what needs doing first. */
+function More({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="notice group">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 text-sm font-medium hover:bg-raised">
+        {title}
+        <span className="text-faint transition-transform group-open:rotate-180" aria-hidden="true">
+          ▾
+        </span>
+      </summary>
+      <div className="grid gap-4 border-t border-line p-5">{children}</div>
+    </details>
   );
 }
 
@@ -184,53 +190,25 @@ function UpcomingPanel({ items, buyer }: { items: UpcomingPayment[]; buyer: bool
   );
 }
 
-const STEPS = ["Sealed bids", "Questions", "Compare", "Award and pay"];
-
-function TenderCard({ t }: { t: TenderSummary }) {
-  const done = [atLeast(t.status, "CLOSED"), atLeast(t.status, "SCORED"), atLeast(t.status, "AWARDED"), t.status === "COMPLETE"];
-  const current = done.indexOf(false);
+/** One active tender as a ruled line: what it is, where it stands, and its three numbers. */
+function TenderRow({ t }: { t: TenderSummary }) {
   return (
     <Link
       href={`/tender/${t.id}`}
-      className="notice group grid gap-5 overflow-hidden rounded-xl p-4 transition-colors hover:border-line-strong sm:grid-cols-[96px_minmax(0,1fr)] sm:p-5"
+      className="group grid gap-x-6 gap-y-1.5 px-5 py-3.5 hover:bg-raised sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
     >
-      <div className="relative hidden aspect-square overflow-hidden rounded-lg bg-canvas ring-1 ring-line sm:block">
-        {t.photo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={t.photo} alt="" className="h-full w-full object-cover" />
-        ) : (
-          // No reference photo: a parcel glyph, so the tile never looks broken.
-          <svg viewBox="0 0 24 24" className="absolute inset-0 m-auto h-9 w-9 text-faint" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
-            <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" />
-            <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9M7.75 5.25l8.5 4.5" />
-          </svg>
-        )}
-      </div>
-      <div className="grid min-w-0 gap-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="grid min-w-0 gap-1">
-            <StatusPill status={t.status} waiting={t.waitingReplies} heldCents={t.heldCents} />
-            <h2 className="text-lg group-hover:text-dye">{t.title}</h2>
-            <p className="text-sm text-muted">Deliver by {day(t.deliverBy)}.</p>
-          </div>
-          <dl className="grid grid-cols-3 gap-5 text-sm sm:text-right">
-            <Stat label="Budget" value={money(t.budgetCents, t.currency)} />
-            <Stat label="Bids" value={String(t.bidCount)} />
-            <Stat label={t.status === "OPEN" ? "Closes" : "Closed"} value={day(t.closesAt).slice(0, -5)} />
-          </dl>
-        </div>
-        <ol className="grid grid-cols-4 gap-1.5" aria-label="Progress">
-          {STEPS.map((s, i) => (
-            <li key={s} className="grid gap-1.5">
-              <span className={`h-1 rounded-full ${done[i] ? "bg-dye" : i === current ? "bg-dye/40" : "bg-line"}`} aria-hidden="true" />
-              <span className={`truncate text-xs ${i === current ? "font-medium text-ink" : "text-faint"}`}>
-                {s}
-                <span className="sr-only">{done[i] ? ", done" : i === current ? ", current" : ""}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      </div>
+      <span className="grid min-w-0 gap-1">
+        <span className="font-medium group-hover:text-dye">{t.title}</span>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+          <StatusPill status={t.status} waiting={t.waitingReplies} heldCents={t.heldCents} />
+          <span>Deliver by {day(t.deliverBy)}</span>
+        </span>
+      </span>
+      <dl className="grid grid-cols-3 gap-5 text-sm sm:text-right">
+        <Stat label="Budget" value={money(t.budgetCents, t.currency)} />
+        <Stat label="Bids" value={String(t.bidCount)} />
+        <Stat label={t.status === "OPEN" ? "Closes" : "Closed"} value={day(t.closesAt).slice(0, -5)} />
+      </dl>
     </Link>
   );
 }
@@ -285,11 +263,11 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
         description="Buyers compare every bid at the price delivered to their door, so an honest all-in price is the one that counts."
       />
       <div className="grid gap-8">
-        <dl className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <Kpi tone="ok" label="Received through PayPal" value={sumText(received.map(([cur, r]) => [r.cents, cur]))} note={`${cf.transactions.length} payments`} />
-          <Kpi tone="sun" label="In rupiah, after PayPal fees" value={idr(rupiah)} note="Estimate, after PayPal fees" />
-          <Kpi tone="dye" label="Due to you next" value={dueText} note={dueNext ? "When the buyer confirms the step" : "Nothing due right now"} />
-          <Kpi tone="warn" label="Waiting for your bid" value={String(open)} note={open ? "Open tenders you have not bid on" : "You have bid on every open tender"} />
+        <dl className={LEDGER}>
+          <Kpi label="Received through PayPal" value={sumText(received.map(([cur, r]) => [r.cents, cur]))} note={`${cf.transactions.length} payments`} />
+          <Kpi label="In rupiah, after PayPal fees" value={idr(rupiah)} note="Estimate, after PayPal fees" />
+          <Kpi label="Due to you next" value={dueText} note={dueNext ? "When the tender owner confirms the step" : "Nothing due right now"} />
+          <Kpi label="Waiting for your bid" value={String(open)} note={open ? "Open tenders you have not bid on" : "You have bid on every open tender"} />
         </dl>
 
         <ChannelLinker
@@ -381,17 +359,15 @@ async function toQuest(t: QuestRow): Promise<Quest> {
   };
 }
 
-const tint = { dye: "bg-dye", ok: "bg-ok", sun: "bg-sun", warn: "bg-warn" };
+/** The money ledger: one sheet, ruled into columns. */
+const LEDGER = "notice grid grid-cols-2 divide-line [&>*]:border-line max-sm:[&>*:nth-child(-n+2)]:border-b sm:grid-cols-4 sm:divide-x";
 
-function Kpi({ tone, label, value, note }: { tone: keyof typeof tint; label: string; value: string; note: ReactNode }) {
+function Kpi({ label, value, note }: { label: string; value: string; note: ReactNode }) {
   return (
-    <div className="notice grid content-between gap-3 rounded-xl p-3.5 sm:p-4">
-      <div className="flex items-center justify-between gap-3">
-        <dt className="text-sm text-muted">{label}</dt>
-        <span className={`h-2 w-2 rounded-full ${tint[tone]}`} aria-hidden="true" />
-      </div>
+    <div className="grid content-start gap-1 p-4">
+      <dt className="text-xs text-muted">{label}</dt>
       <dd className="grid gap-0.5">
-        <span className="num text-[22px] font-semibold leading-none tracking-tight sm:text-[26px]">{value}</span>
+        <span className="num text-[22px] font-semibold leading-tight">{value}</span>
         <span className="text-xs text-faint">{note}</span>
       </dd>
     </div>
