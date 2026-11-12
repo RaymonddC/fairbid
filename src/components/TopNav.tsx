@@ -27,6 +27,7 @@ export function TopNav({ user }: { user: User | null }) {
       : [
           { href: "/", label: "Tenders", active: (p) => p === "/" || p.startsWith("/tender") },
           { href: "/post", label: "Post a tender", active: (p) => p.startsWith("/post") },
+          { href: "/ai", label: "AI", active: (p) => p.startsWith("/ai") },
         ];
 
   if (hidden) return null;
