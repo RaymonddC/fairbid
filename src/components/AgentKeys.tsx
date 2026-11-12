@@ -13,7 +13,7 @@ const input =
 const when = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 /** Lets a seller give their own AI agent (Claude, or any MCP client) a key to FairBid. */
-export function AgentKeys({ keys, mcpUrl }: { keys: AgentKeyView[]; mcpUrl: string }) {
+export function AgentKeys({ keys, mcpUrl, bare = false }: { keys: AgentKeyView[]; mcpUrl: string; bare?: boolean }) {
   const [label, setLabel] = useState("");
   const [fresh, setFresh] = useState<{ key: string; label: string } | null>(null);
   const [pending, start] = useTransition();
@@ -42,10 +42,10 @@ export function AgentKeys({ keys, mcpUrl }: { keys: AgentKeyView[]; mcpUrl: stri
 
   const command = fresh ? `claude mcp add --transport http fairbid ${mcpUrl} --header "Authorization: Bearer ${fresh.key}"` : "";
 
-  return (
-    <Panel className="grid content-start gap-4">
+  const body = (
+    <>
       <div className="grid gap-0.5">
-        <h2 className="text-base">Let your AI agent bid for you</h2>
+        {!bare && <h2 className="text-base">Let your AI agent bid for you</h2>}
         <p className="text-sm text-muted">
           Optional. Give an AI agent, such as Claude, a key and it can find open tenders, seal bids and answer buyers&apos; questions for you,
           under the same rules as this site: bids stay sealed, no late bids, and an answer never changes a price.{" "}
@@ -118,6 +118,8 @@ export function AgentKeys({ keys, mcpUrl }: { keys: AgentKeyView[]; mcpUrl: stri
           </button>
         </div>
       )}
-    </Panel>
+    </>
   );
+  // Bare: shown inside the FairBid agent panel, under "Use your own agent instead".
+  return bare ? <div className="grid content-start gap-4">{body}</div> : <Panel className="grid content-start gap-4">{body}</Panel>;
 }

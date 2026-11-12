@@ -153,6 +153,15 @@ function describe(
       return { title: `The seller refunded ${money(p.amountCents)} on PayPal`, detail: `${String(p.milestone ?? "")}. Refund ${String(p.refundId ?? "")}` };
     case "paypal.payment.reversed":
       return { title: `PayPal reversed a payment: ${money(p.amountCents)}`, detail: `${String(p.milestone ?? "")}. Capture ${String(p.paypalCaptureId ?? "")}` };
+    // A seller's FairBid agent. Its reasons are for the seller: the buyer sees only what happened.
+    case "agent.bid":
+      return { title: "A seller's FairBid agent sealed the bid above", detail: "Bid from the seller's own description of what they make, under the same rules as any bid." };
+    case "agent.skipped":
+      return { title: "A seller's FairBid agent looked and did not bid" };
+    case "agent.answered":
+      return { title: `A seller's FairBid agent answered for bid ${letterOf(p.bidId)}`, detail: "From the seller's own description; an answer cannot change a price." };
+    case "agent.deferred":
+      return { title: "A seller's FairBid agent left a question for the seller to answer" };
     default:
       return { title: kind };
   }
@@ -198,7 +207,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <span className="grid gap-0.5">
                     <span className="text-sm font-medium">{d.title}</span>
                     {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
-                    {e.actor.startsWith("agent:") && <span className="text-xs text-dye">By a seller agent, over MCP</span>}
+                    {e.actor.startsWith("agent:") && (
+                      <span className="text-xs text-dye">{e.kind.startsWith("agent.") ? "By the seller's FairBid agent" : "By a seller's AI agent"}</span>
+                    )}
                     {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
                   </span>
                   <span className="ref grid text-[11px] text-faint sm:text-right">

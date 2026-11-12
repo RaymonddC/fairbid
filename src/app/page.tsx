@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { CashflowChart } from "@/components/CashflowChart";
 import { QuestBoard, type Quest, type QuestState } from "@/components/QuestBoard";
 import { AgentKeys } from "@/components/AgentKeys";
+import { OwnAgent } from "@/components/OwnAgent";
+import { agentActivity } from "@/lib/agents/own-agent";
 import { ChannelLinker } from "@/components/ChannelLinker";
 import { TransactionsGrid } from "@/components/TransactionsGrid";
 import { PageHeader } from "@/components/PageHeader";
@@ -232,11 +234,13 @@ function sumText(parts: [number, string][]): string {
 }
 
 async function SellerHome({ sellerId, name }: { sellerId: string; name: string }) {
-  const [cf, links, agentKeys, base, tenders] = await Promise.all([
+  const [cf, links, agentKeys, base, agent, activity, tenders] = await Promise.all([
     sellerCashflow(sellerId),
     linksOf(sellerId),
     listAgentKeys(sellerId),
     publicBaseUrl(),
+    db.seller.findUnique({ where: { id: sellerId }, select: { agentBrief: true, agentOn: true } }),
+    agentActivity(sellerId),
     db.tender.findMany({
       // Every published tender: open ones to bid on, and closed ones this seller bid on.
       where: { OR: [{ status: "OPEN" }, { bids: { some: { sellerId } } }] },
@@ -276,7 +280,12 @@ async function SellerHome({ sellerId, name }: { sellerId: string; name: string }
             linked: links.find((l) => l.kind === c.kind) ? maskAddress(c.kind, links.find((l) => l.kind === c.kind)!.address) : null,
           }))}
         />
-        <AgentKeys keys={agentKeys} mcpUrl={`${base}/api/mcp`} />
+        <OwnAgent
+          brief={agent?.agentBrief ?? ""}
+          on={agent?.agentOn ?? false}
+          activity={activity}
+          keys={<AgentKeys keys={agentKeys} mcpUrl={`${base}/api/mcp`} bare />}
+        />
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <QuestBoard quests={quests} />
           <UpcomingPanel items={cf.upcoming} buyer={false} />
