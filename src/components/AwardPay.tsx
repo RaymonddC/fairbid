@@ -276,7 +276,6 @@ function Payments({ t, award }: { t: TenderView; award: AwardView }) {
                   {countryName(award.sellerCountry)}. Paid to PayPal account <span className="ref">{award.payeeEmail}</span>.
                 </p>
               </div>
-              <Pill tone="ok">Real hold, PayPal sandbox</Pill>
             </div>
             <PhotoStrip photos={award.photos} label={`Photos from ${award.sellerName}`} size="sm" />
             <p className="text-xs text-muted">Check each step against these photos before you pay it.</p>

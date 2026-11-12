@@ -30,7 +30,7 @@ export function TopNav({ user }: { user: User | null }) {
       : [
           { href: "/", label: "Tenders", active: (p) => p === "/" || p.startsWith("/tender") },
           { href: "/post", label: "Post a tender", active: (p) => p.startsWith("/post") },
-          { href: "/ai", label: "AI", active: (p) => p.startsWith("/ai") },
+          { href: "/ai", label: "Your agent", active: (p) => p.startsWith("/ai") },
         ];
 
   if (hidden) return null;
@@ -67,10 +67,6 @@ export function TopNav({ user }: { user: User | null }) {
         )}
 
         <div className="order-2 ml-auto flex h-14 items-center gap-3 md:order-3 md:h-auto">
-          <span className="hidden h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted ring-1 ring-inset ring-line lg:inline-flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden="true" />
-            PayPal sandbox
-          </span>
           {user && (
             <>
               <span className="hidden h-6 w-px bg-line sm:block" aria-hidden="true" />

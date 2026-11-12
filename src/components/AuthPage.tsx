@@ -23,7 +23,6 @@ export function AuthPage({ initial, next }: { initial: "login" | "register"; nex
             <LogoMark size={36} />
             <span className="text-[17px] font-semibold tracking-tight">FairBid</span>
           </span>
-          <span className="rounded-full px-3 py-1 text-xs text-white/75 ring-1 ring-inset ring-white/20">PayPal sandbox, no real money</span>
         </div>
 
         {/* Below desktop the brand side is a slim header, so the whole page fits one screen. */}

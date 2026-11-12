@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AgentKeys } from "@/components/AgentKeys";
+import { ChannelLinker } from "@/components/ChannelLinker";
 import { OwnAgent } from "@/components/OwnAgent";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/ui";
 import { agentActivity } from "@/lib/agents/own-agent";
+import { availableChannels, linksOf } from "@/lib/channels";
+import { maskAddress } from "@/lib/channels/types";
 import { db } from "@/lib/db";
 import { listAgentKeys } from "@/lib/mcp/agent-keys";
 import { publicBaseUrl } from "@/lib/public-url";
@@ -32,11 +35,12 @@ export default async function AgentPage() {
   if (!user) redirect("/login");
   if (user.role !== "seller" || !user.sellerId) redirect("/ai");
 
-  const [agent, activity, keys, base] = await Promise.all([
+  const [agent, activity, keys, base, links] = await Promise.all([
     db.seller.findUnique({ where: { id: user.sellerId }, select: { agentBrief: true, agentOn: true } }),
     agentActivity(user.sellerId),
     listAgentKeys(user.sellerId),
     publicBaseUrl(),
+    linksOf(user.sellerId),
   ]);
 
   return (
@@ -51,6 +55,14 @@ export default async function AgentPage() {
         on={agent?.agentOn ?? false}
         activity={activity}
         keys={<AgentKeys keys={keys} mcpUrl={`${base}/api/mcp`} bare />}
+      />
+
+      {/* Where the tender owner's questions reach the bidder too, and what the agent cannot answer. */}
+      <ChannelLinker
+        channels={availableChannels().map((c) => {
+          const l = links.find((x) => x.kind === c.kind);
+          return { ...c, linked: l ? maskAddress(c.kind, l.address) : null };
+        })}
       />
 
       <Panel className="grid content-start gap-3">
