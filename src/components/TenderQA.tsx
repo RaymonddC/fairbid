@@ -145,7 +145,16 @@ function AnswerBox({ q }: { q: PublishedQuestion }) {
 }
 
 /** The buyer's side: bidders' questions, with no names, and an answer box for those the AI left. */
-export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; open: boolean }) {
+export function BuyerQA({
+  questions,
+  open,
+  summary,
+}: {
+  questions: PublishedQuestion[];
+  open: boolean;
+  /** The latest summary of what bidders and their agents asked, written by the tender owner's AI. */
+  summary?: { summary: string; at: string } | null;
+}) {
   if (!open && questions.length === 0) return null;
   const waiting = questions.filter((q) => !q.answer).length;
   return (
@@ -159,6 +168,12 @@ export function BuyerQA({ questions, open }: { questions: PublishedQuestion[]; o
         </div>
         {waiting > 0 && <Pill tone="warn">{waiting} waiting for you</Pill>}
       </div>
+      {summary && questions.length > 0 && (
+        <div className="grid gap-1 border-l-2 border-dye pl-3">
+          <span className="text-xs font-medium text-dye">Summary from your AI, {dayTime(summary.at)}</span>
+          <p className="text-sm">{summary.summary}</p>
+        </div>
+      )}
       {questions.length === 0 ? (
         <p className="text-sm text-muted">No questions yet. Your AI answers what the tender already settles; the rest comes to you here.</p>
       ) : (

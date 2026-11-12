@@ -7,7 +7,7 @@ import { refresh } from "next/cache";
 import { after } from "next/server";
 import { keysBySellerFromEnv, runBots } from "@/lib/agents/bots";
 import { MAX_BRIEF } from "@/lib/agents/brief";
-import { answerAgentQuestions, runAgentsForTender, runOwnAgent } from "@/lib/agents/own-agent";
+import { answerAgentQuestions, recheckAgentsForQuestion, runAgentsForTender, runOwnAgent } from "@/lib/agents/own-agent";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
@@ -107,7 +107,10 @@ export async function askBuyerAction(tenderId: string, question: string) {
 export async function answerSellerQuestionAction(questionId: string, answer: string) {
   return run(async () => {
     const user = await as("buyer");
-    return { question: await answerTenderQuestion({ questionId: String(questionId), buyerAccountId: user.id, answer: String(answer) }) };
+    const question = await answerTenderQuestion({ questionId: String(questionId), buyerAccountId: user.id, answer: String(answer) });
+    // Bidders' agents that asked read the answer and replace their bid only if it changes something.
+    after(() => recheckAgentsForQuestion(question.id));
+    return { question };
   });
 }
 
@@ -204,6 +207,7 @@ export async function runAgentNowAction() {
       bids: steps.filter((s) => s.kind === "agent.bid").length,
       skipped: steps.filter((s) => s.kind === "agent.skipped").length,
       answers: steps.filter((s) => s.kind === "agent.answered").length,
+      asked: steps.filter((s) => s.kind === "agent.asked").length,
     };
   });
 }

@@ -10,10 +10,20 @@
 // the log: the panel reads the seller's own bid for the amount.
 
 import { appendEvent } from "../audit-store";
-import { answerFromSellerBrief, classifyHs, planAgentBid } from "../ai/roles";
+import {
+  MAX_TURNS,
+  answerFromSellerBrief,
+  bidderAgentTurn,
+  classifyHs,
+  planAgentBid,
+  summarizeForBidder,
+  type ConversationTurn,
+  type PublishedAnswer,
+} from "../ai/roles";
 import { db } from "../db";
 import { money } from "../format";
 import { log } from "../log";
+import { askTenderQuestion, canAskMore, listTenderQuestions, type PublishedQuestion } from "../tender-questions";
 import { StepError, addReply, submitBid } from "../workflow";
 import type { BriefTender } from "./brief";
 
@@ -22,7 +32,7 @@ export const agentActor = (sellerId: string) => `agent:${sellerId}`;
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 /** What the agent did, as the event log records it. */
-export const AGENT_KINDS = ["agent.bid", "agent.skipped", "agent.answered", "agent.deferred"] as const;
+export const AGENT_KINDS = ["agent.bid", "agent.skipped", "agent.answered", "agent.deferred", "agent.asked", "agent.rechecked", "agent.summary"] as const;
 export type AgentKind = (typeof AGENT_KINDS)[number];
 
 export interface AgentStep {
@@ -59,22 +69,108 @@ async function record(tenderId: string, sellerId: string, kind: AgentKind, paylo
   steps.push({ tenderId, kind, detail });
 }
 
-/** Looks at one open tender for one seller and bids or skips. Never throws. */
+/** The published answers on a tender, as the agent reads them. */
+const answersOf = (questions: PublishedQuestion[]): PublishedAnswer[] =>
+  questions.filter((q) => q.answer).map((q) => ({ question: q.question, answer: q.answer! }));
+
+const sameQuestion = (a: string, b: string) => a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Asks the tender owner one of the agent's questions: never one already asked on the tender,
+ * within the per-bidder cap and at most MAX_TURNS per tender per version of the brief. Returns
+ * the published question, or null when it did not ask. Never throws for a refused question.
+ */
+async function askOnce(
+  seller: { id: string; since: Date | null },
+  tenderId: string,
+  question: string,
+  questions: PublishedQuestion[],
+  ai: string,
+  steps: AgentStep[],
+): Promise<PublishedQuestion | null> {
+  if (!canAskMore(questions.filter((q) => q.mine).length)) return null;
+  if (questions.some((q) => sameQuestion(q.question, question))) return null;
+  const already = await db.event.count({
+    where: { tenderId, actor: agentActor(seller.id), kind: "agent.asked", ...(seller.since ? { at: { gte: seller.since } } : {}) },
+  });
+  if (already >= MAX_TURNS) return null;
+  try {
+    const q = await askTenderQuestion({ tenderId, sellerId: seller.id, question, via: "agent" });
+    // The question id and whether it was answered: never a price.
+    await record(
+      tenderId,
+      seller.id,
+      "agent.asked",
+      { questionId: q.id, answered: Boolean(q.answer), ai },
+      steps,
+      q.answer ? `Answered by their AI: ${q.answer}` : "Waiting for the tender owner; your agent will check the answer",
+    );
+    return q;
+  } catch (error) {
+    if (error instanceof StepError) {
+      log.warn("own agent could not ask", { sellerId: seller.id, tenderId, error: error.message });
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * The clarification round: up to MAX_TURNS questions from the bidder's agent, each answered by
+ * the tender owner's AI from the published tender when it can. It stops when the agent has
+ * enough, or when a question waits for the tender owner. Clarification only: a question about
+ * prices or other bids is dropped before it is asked.
+ */
+async function converse(
+  seller: { id: string; agentBrief: string; since: Date | null },
+  tenderId: string,
+  bt: BriefTender,
+  steps: AgentStep[],
+): Promise<{ turns: ConversationTurn[]; questionIds: string[] }> {
+  const turns: ConversationTurn[] = [];
+  const questionIds: string[] = [];
+  while (turns.length < MAX_TURNS) {
+    const questions = await listTenderQuestions(tenderId, seller.id);
+    const next = await bidderAgentTurn(seller.agentBrief, bt, answersOf(questions), turns);
+    if (!next.value) break;
+    const asked = await askOnce(seller, tenderId, next.value, questions, next.source, steps);
+    if (!asked) break;
+    questionIds.push(asked.id);
+    turns.push({ question: asked.question, answer: asked.answer, answeredBy: asked.answeredBy });
+    if (!asked.answer) break;
+  }
+  return { turns, questionIds };
+}
+
+/** Looks at one open tender for one seller: when it fits, talks with the tender owner's AI about
+ * what the tender leaves out, then bids from the answers or skips, and sums it up for the
+ * bidder. A question still waiting does not hold up the bid: a bid can be replaced while
+ * bidding is open, and a later run reads the answer. Never throws. */
 async function workTender(
-  seller: { id: string; agentBrief: string },
+  seller: { id: string; agentBrief: string; since: Date | null },
   tender: { id: string; title: string; needText: string; spec: unknown },
   steps: AgentStep[],
 ): Promise<void> {
+  let talk: { turns: ConversationTurn[]; questionIds: string[] } = { turns: [], questionIds: [] };
+  let outcome: { bid: true } | { bid: false; reason: string } | null = null;
   try {
-    const plan = await planAgentBid(seller.agentBrief, briefTender(tender));
+    const bt = briefTender(tender);
+    let plan = await planAgentBid(seller.agentBrief, bt, answersOf(await listTenderQuestions(tender.id, seller.id)));
+    if (plan.value.kind === "bid") {
+      talk = await converse(seller, tender.id, bt, steps);
+      // Answers came in: plan again with them in hand.
+      if (talk.turns.some((t) => t.answer)) plan = await planAgentBid(seller.agentBrief, bt, answersOf(await listTenderQuestions(tender.id, seller.id)));
+    }
     if (plan.value.kind === "skip") {
       await record(tender.id, seller.id, "agent.skipped", { reason: plan.value.reason, ai: plan.source }, steps, plan.value.reason);
+      if (talk.turns.length) outcome = { bid: false, reason: plan.value.reason };
       return;
     }
     const photos = await latestPhotos(seller.id);
     if (photos.length === 0) {
       const reason = "A bid needs a photo: bid once yourself and your agent reuses that bid's photos.";
       await record(tender.id, seller.id, "agent.skipped", { reason, ai: plan.source }, steps, reason);
+      outcome = { bid: false, reason };
       return;
     }
     const hs = await classifyHs(plan.value.notes);
@@ -86,12 +182,24 @@ async function workTender(
       agentActor(seller.id),
     );
     await record(tender.id, seller.id, "agent.bid", { ai: plan.source, hsCode: hs.value.hsCode, hsSource: hs.source }, steps, "sealed");
+    outcome = { bid: true };
   } catch (error) {
     if (error instanceof StepError) {
       const reason = `Could not bid: ${error.message}`;
-      await record(tender.id, seller.id, "agent.skipped", { reason }, steps, reason);
+      await record(tender.id, seller.id, "agent.skipped", { reason }, steps, reason).catch(() => {});
+      outcome = { bid: false, reason };
     } else {
       log.error("own agent failed on a tender", error, { sellerId: seller.id, tenderId: tender.id });
+    }
+  } finally {
+    if (outcome) {
+      try {
+        const s = await summarizeForBidder(tender.title, talk.turns, outcome);
+        // The summary and the questions it covers. Never a price: the tender owner reads this log too.
+        await record(tender.id, seller.id, "agent.summary", { summary: s.value, questionIds: talk.questionIds, ai: s.source }, steps, s.value);
+      } catch (error) {
+        log.error("own agent summary failed", error, { sellerId: seller.id, tenderId: tender.id });
+      }
     }
   }
 }
@@ -106,7 +214,7 @@ export async function runOwnAgent(sellerId: string, opts: { tenderIds?: string[]
   try {
     const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { id: true, agentBrief: true, agentOn: true, agentUpdatedAt: true } });
     if (!seller?.agentOn || !seller.agentBrief?.trim()) return steps;
-    const brief = { id: seller.id, agentBrief: seller.agentBrief };
+    const brief = { id: seller.id, agentBrief: seller.agentBrief, since: seller.agentUpdatedAt };
     const tenders = await db.tender.findMany({
       where: {
         status: "OPEN",
@@ -128,6 +236,7 @@ export async function runOwnAgent(sellerId: string, opts: { tenderIds?: string[]
     });
     const seen = new Set(looked.map((e) => e.tenderId));
     for (const t of tenders) if (!seen.has(t.id)) await workTender(brief, t, steps);
+    await recheckAnswers(brief, steps, opts.tenderIds);
     steps.push(...(await answerQuestionsFor(seller.id, opts.tenderIds)));
   } catch (error) {
     log.error("own agent run failed", error, { sellerId });
@@ -135,6 +244,90 @@ export async function runOwnAgent(sellerId: string, opts: { tenderIds?: string[]
     running.delete(sellerId);
   }
   return steps;
+}
+
+/**
+ * The tender owner answered a question the agent asked after it bid: it plans again with the
+ * answer and replaces its bid only when the plan changes. Each answer is read once. With the
+ * AI off the deterministic plan cannot read an answer, so the bid stands. Never throws.
+ */
+async function recheckAnswers(seller: { id: string; agentBrief: string }, steps: AgentStep[], tenderIds?: string[]): Promise<void> {
+  try {
+    const now = new Date();
+    const asked = await db.event.findMany({
+      where: {
+        actor: agentActor(seller.id),
+        kind: { in: ["agent.asked", "agent.rechecked"] },
+        tender: { status: "OPEN", closesAt: { gt: now }, ...(tenderIds ? { id: { in: tenderIds } } : {}) },
+      },
+      select: { tenderId: true, kind: true, payload: true },
+    });
+    const done = new Set(asked.filter((e) => e.kind === "agent.rechecked").map((e) => (e.payload as { questionId?: string })?.questionId));
+    const pending = asked.filter((e) => e.kind === "agent.asked").map((e) => ({ tenderId: e.tenderId, questionId: (e.payload as { questionId?: string })?.questionId }));
+    for (const { tenderId, questionId } of pending) {
+      if (!questionId || done.has(questionId)) continue;
+      const questions = await listTenderQuestions(tenderId, seller.id);
+      const q = questions.find((x) => x.id === questionId);
+      if (!q?.answer || !q.answeredAt) continue;
+      const bid = await db.bid.findUnique({
+        where: { tenderId_sellerId: { tenderId, sellerId: seller.id } },
+        select: { submittedAt: true, leadTimeDays: true, hsCode: true, photos: true, lines: { select: { kind: true, amountCents: true } } },
+      });
+      // No bid yet: the next look at the tender reads the answer. A bid made after the answer already read it.
+      if (!bid || bid.submittedAt >= new Date(q.answeredAt)) continue;
+      const tender = await db.tender.findUnique({ where: { id: tenderId }, select: { title: true, needText: true, spec: true } });
+      if (!tender) continue;
+      const planned = await planAgentBid(seller.agentBrief, briefTender(tender), answersOf(questions));
+      const plan = planned.value;
+      const line = (kind: string) => bid.lines.find((l) => l.kind === kind)?.amountCents ?? 0;
+      let detail = "Read the tender owner's answer: your bid stands";
+      let outcome: "kept" | "replaced" | "check" = "kept";
+      if (planned.source === "model" && plan.kind === "skip") {
+        outcome = "check";
+        detail = `Read the tender owner's answer: it may rule your bid out, check it (${lower(plan.reason)})`;
+      } else if (
+        planned.source === "model" &&
+        plan.kind === "bid" &&
+        (plan.goodsCents !== line("goods") || plan.shippingCents !== line("shipping") || plan.feesCents !== line("fees") || plan.leadTimeDays !== bid.leadTimeDays)
+      ) {
+        const photos = Array.isArray(bid.photos) ? (bid.photos as string[]) : [];
+        try {
+          await submitBid(
+            tenderId,
+            seller.id,
+            { goodsCents: plan.goodsCents, shippingCents: plan.shippingCents, feesCents: plan.feesCents, leadTimeDays: plan.leadTimeDays, hsCode: bid.hsCode ?? "", notes: plan.notes, photos },
+            agentActor(seller.id),
+          );
+          outcome = "replaced";
+          detail = "Read the tender owner's answer and replaced your bid";
+        } catch (error) {
+          if (!(error instanceof StepError)) throw error;
+          outcome = "check";
+          detail = `Read the tender owner's answer but could not replace your bid: ${error.message}`;
+        }
+      }
+      // What happened, never a price.
+      await record(tenderId, seller.id, "agent.rechecked", { questionId, outcome, ai: planned.source }, steps, detail);
+    }
+  } catch (error) {
+    log.error("own agent recheck failed", error, { sellerId: seller.id });
+  }
+}
+
+/** The tender owner answered a bidder's question: every agent that asked on that tender reads it. Never throws. */
+export async function recheckAgentsForQuestion(questionId: string): Promise<AgentStep[]> {
+  try {
+    const q = await db.tenderQuestion.findUnique({ where: { id: questionId }, select: { tenderId: true } });
+    if (!q) return [];
+    const sellers = await db.seller.findMany({
+      where: { agentOn: true, agentBrief: { not: null }, bids: { some: { tenderId: q.tenderId } } },
+      select: { id: true },
+    });
+    return (await Promise.all(sellers.map((s) => runOwnAgent(s.id, { tenderIds: [q.tenderId] })))).flat();
+  } catch (error) {
+    log.error("own agents failed to read an answer", error, { questionId });
+    return [];
+  }
 }
 
 /** A new tender is open: every seller whose agent is on looks at it. Never throws. */
@@ -212,6 +405,8 @@ export interface AgentActivity {
   kind: AgentKind;
   text: string;
   at: string;
+  /** For a summary: the questions it asked, each with its answer or null while it waits. */
+  turns?: { question: string; answer: string | null; answeredBy: "ai" | "buyer" | null }[];
 }
 
 /** What the seller's own agent did lately, in plain words, for their dashboard only. */
@@ -219,16 +414,53 @@ export async function agentActivity(sellerId: string, take = 8): Promise<AgentAc
   const events = await db.event.findMany({
     where: { actor: agentActor(sellerId), kind: { in: [...AGENT_KINDS] } },
     orderBy: { at: "desc" },
-    take,
+    take: take * 3,
     select: { id: true, tenderId: true, kind: true, payload: true, at: true, tender: { select: { title: true, currency: true } } },
   });
   const bids = await db.bid.findMany({
-    where: { sellerId, tenderId: { in: events.filter((e) => e.kind === "agent.bid").map((e) => e.tenderId) } },
+    where: { sellerId, tenderId: { in: events.filter((e) => e.kind === "agent.bid" || e.kind === "agent.summary").map((e) => e.tenderId) } },
     select: { tenderId: true, lines: { select: { amountCents: true } } },
   });
   const totalOf = new Map(bids.map((b) => [b.tenderId, b.lines.reduce((s, l) => s + l.amountCents, 0)]));
-  return events.map((e) => {
-    const p = (e.payload ?? {}) as { reason?: string };
+  // The seller's own questions, read live so a later answer shows.
+  const askedIds = events
+    .flatMap((e) => {
+      const p = (e.payload ?? {}) as { questionId?: unknown; questionIds?: unknown };
+      return e.kind === "agent.asked" ? [p.questionId] : e.kind === "agent.summary" && Array.isArray(p.questionIds) ? p.questionIds : [];
+    })
+    .filter((id): id is string => typeof id === "string");
+  const asked = new Map(
+    (
+      await db.tenderQuestion.findMany({
+        where: { id: { in: askedIds }, sellerId },
+        select: { id: true, question: true, answer: true, answeredBy: true },
+      })
+    ).map((q) => [q.id, q]),
+  );
+  const askedText = (title: string, questionId: unknown) => {
+    const q = asked.get(String(questionId));
+    if (!q) return `Asked the tender owner a question on ${title}`;
+    const answer = !q.answer
+      ? "Waiting for the tender owner."
+      : `${q.answeredBy === "buyer" ? "Answered by the tender owner" : "Answered by their AI"}: ${q.answer}`;
+    return `Asked the tender owner on ${title}: ${q.question} ${answer}`;
+  };
+  // A summary heads its run on a tender: the asks, the bid and the skip of that run fold into it.
+  const summaryAt = new Map<string, Date>();
+  for (const e of events) if (e.kind === "agent.summary" && !summaryAt.has(e.tenderId)) summaryAt.set(e.tenderId, e.at);
+  const folded = (e: (typeof events)[number]) =>
+    ["agent.asked", "agent.bid", "agent.skipped"].includes(e.kind) && summaryAt.has(e.tenderId) && e.at <= summaryAt.get(e.tenderId)!;
+  return events.filter((e) => !folded(e)).slice(0, take).map((e) => {
+    const p = (e.payload ?? {}) as { reason?: string; questionId?: string; outcome?: string; summary?: string; questionIds?: unknown };
+    if (e.kind === "agent.summary") {
+      const total = totalOf.get(e.tenderId);
+      const turns = (Array.isArray(p.questionIds) ? p.questionIds : [])
+        .map((id) => asked.get(String(id)))
+        .filter((q): q is NonNullable<typeof q> => Boolean(q))
+        .map((q) => ({ question: q.question, answer: q.answer, answeredBy: q.answer ? (q.answeredBy === "buyer" ? ("buyer" as const) : ("ai" as const)) : null }));
+      const bid = total !== undefined ? ` Your bid: ${money(total, e.tender.currency)}, before duty and VAT.` : "";
+      return { id: e.id, tenderId: e.tenderId, kind: "agent.summary" as const, text: `${e.tender.title}: ${p.summary ?? ""}${bid}`, at: e.at.toISOString(), turns };
+    }
     const title = e.tender.title;
     const kind = e.kind as AgentKind;
     const total = totalOf.get(e.tenderId);
@@ -240,8 +472,16 @@ export async function agentActivity(sellerId: string, take = 8): Promise<AgentAc
         : kind === "agent.skipped"
           ? `Skipped ${title}: ${lower(p.reason ?? "not a fit")}`
           : kind === "agent.answered"
-            ? `Answered a buyer's question on ${title}`
-            : `Left a buyer's question on ${title} for you: your description does not cover it`;
+            ? `Answered a tender owner's question on ${title}`
+            : kind === "agent.asked"
+              ? askedText(title, p.questionId)
+              : kind === "agent.rechecked"
+                ? p.outcome === "replaced"
+                  ? `Read the tender owner's answer on ${title} and replaced your bid`
+                  : p.outcome === "check"
+                    ? `Read the tender owner's answer on ${title}: check whether your bid still fits`
+                    : `Read the tender owner's answer on ${title}: your bid stands`
+                : `Left a tender owner's question on ${title} for you: your description does not cover it`;
     return { id: e.id, tenderId: e.tenderId, kind, text, at: e.at.toISOString() };
   });
 }

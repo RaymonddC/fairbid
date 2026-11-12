@@ -177,3 +177,109 @@ export function answerFromBrief(brief: string, question: string): string | null 
   if (!best || best.hits < 2) return null;
   return best.sentence.slice(0, 1000);
 }
+
+// ── The agent's question to the tender owner ─────────────────────────────────
+
+/** A size as written: its numbers in centimetres, and the words to quote back ("40 x 40 cm"). */
+export interface Size {
+  cm: number[];
+  text: string;
+}
+
+const NUM = String.raw`\d{1,4}(?:[.,]\d{1,2})?`;
+// No bare "in": "200 in 3 weeks" is not a size.
+const UNIT = String.raw`(cm|mm|m|inch|inches)\b`;
+const SIZE = new RegExp(
+  String.raw`(${NUM})\s*(?:cm|mm)?\s*(?:x|×|by)\s*(${NUM})(?:\s*(?:cm|mm)?\s*(?:x|×|by)\s*(${NUM}))?\s*${UNIT}|(${NUM})\s*${UNIT}`,
+  "gi",
+);
+const TO_CM: Record<string, number> = { cm: 1, mm: 0.1, m: 100, inch: 2.54, inches: 2.54 };
+const num = (s: string) => Number(s.replace(",", "."));
+
+/** Every size in a text: "40 x 40 cm", "180 x 40 cm", "40 cm". Volumes and weights are not sizes. */
+export function parseSizes(text: string): Size[] {
+  const out: Size[] = [];
+  for (const m of text.matchAll(SIZE)) {
+    const multi = m[1] !== undefined;
+    const unit = (multi ? m[4] : m[6]).toLowerCase();
+    const raw = multi ? [m[1], m[2], m[3]].filter((v): v is string => v !== undefined) : [m[5]];
+    const cm = raw.map((v) => Math.round(num(v) * TO_CM[unit] * 10) / 10);
+    if (cm.some((v) => !(v > 0))) continue;
+    out.push({ cm, text: `${raw.join(" x ")} ${unit === "inches" ? "inch" : unit}` });
+  }
+  return out;
+}
+
+/** Whether a size the tender states fits the bidder's: every number the tender gives is one of theirs. */
+const sameSize = (mine: Size, theirs: Size) => theirs.cm.every((v) => mine.cm.some((w) => Math.abs(v - w) < 0.6));
+
+export const MATERIALS = [
+  "cotton", "linen", "rayon", "viscose", "silk", "wool", "polyester", "jute", "hemp", "bamboo", "rattan", "teak", "mahogany",
+  "oak", "walnut", "clay", "terracotta", "ceramic", "stoneware", "porcelain", "leather", "glass", "brass", "copper", "silver",
+] as const;
+
+/** The materials a text names, in the order of the list above. */
+export function parseMaterials(text: string): string[] {
+  const t = text.toLowerCase();
+  return MATERIALS.filter((m) => new RegExp(`\\b${m}\\b`).test(t));
+}
+
+/** The brief's sentence that names the product, else the whole brief. */
+function clauseFor(brief: string, head: string | null): string {
+  if (head) for (const clause of brief.split(/(?<=[.!?;])\s+|\n+/)) if (words(clause).includes(head)) return clause;
+  return brief;
+}
+
+/**
+ * The size the brief gives for the product: in the phrase that names it ("runners 180 x 40 cm"),
+ * or in a phrase of only a size right after it ("runners and scarves, 180 x 40 cm"). When the
+ * brief lists several products and sizes and none goes with this one, none: never another
+ * product's size. A brief with one size only means that size.
+ */
+export function sizeFor(brief: string, head: string | null): Size | null {
+  const all = parseSizes(brief);
+  if (head) {
+    for (const sentence of brief.split(/(?<=[.!?])\s+|\n+/)) {
+      const parts = sentence.split(/[,;:]\s*|\s+-\s+/);
+      const at = parts.findIndex((p) => words(p).includes(head));
+      if (at < 0) continue;
+      const own = parseSizes(parts[at])[0];
+      if (own) return own;
+      const next = parts[at + 1];
+      if (next && parseSizes(next).length && words(next.replace(SIZE, "")).filter((w) => w !== "about" && w !== "approx").length === 0) {
+        return parseSizes(next)[0];
+      }
+    }
+  }
+  return all.length === 1 ? all[0] : null;
+}
+
+/**
+ * The deterministic agent's one question to the tender owner, used when the AI is off or
+ * fails: asked only for a clear gap between what the bidder makes and what the tender (with
+ * the answers already published on it) says. A size first, then a material. Never about
+ * prices or other bids. Null when there is no clear gap, or the tender is not a fit.
+ */
+export function questionFromBrief(brief: string, tender: BriefTender, published: string[] = []): string | null {
+  const text = brief.trim();
+  if (!text) return null;
+  const { match, head } = matchesBrief(text, tender);
+  if (!match) return null;
+  const clause = clauseFor(text, head);
+  const known = [tender.title, tender.needText, tender.item, ...published].join("\n");
+
+  const mine = sizeFor(text, head);
+  if (mine) {
+    const theirs = parseSizes(known);
+    if (theirs.length === 0) return `Is ${mine.text} the size you want?`;
+    if (!theirs.some((s) => sameSize(mine, s))) return `Would ${mine.text} work instead of ${theirs[0].text}?`;
+  }
+  const inClause = parseMaterials(clause);
+  const made = inClause.length ? inClause : parseMaterials(text);
+  if (made.length) {
+    const wanted = parseMaterials(known);
+    if (wanted.length === 0) return `Is ${made[0]} acceptable?`;
+    if (!made.some((m) => wanted.includes(m))) return `Is ${made[0]} acceptable instead of ${wanted[0]}?`;
+  }
+  return null;
+}

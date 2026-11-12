@@ -5,7 +5,7 @@ import { BuyerQA, SellerQA } from "@/components/TenderQA";
 import { DEMO_USERS } from "@/lib/auth";
 import { sellerTenderView, tenderView } from "@/lib/cached";
 import { getUser } from "@/lib/session";
-import { listTenderQuestions } from "@/lib/tender-questions";
+import { latestOwnerSummary, listTenderQuestions } from "@/lib/tender-questions";
 
 export const metadata = { title: "Tender · FairBid" };
 
@@ -24,13 +24,13 @@ export default async function TenderPage({ params }: { params: Promise<{ id: str
 
   const t = await tenderView(id);
   if (!t || t.buyerId !== user.id) notFound();
-  const questions = await listTenderQuestions(id);
+  const [questions, summary] = await Promise.all([listTenderQuestions(id), latestOwnerSummary(id)]);
   // The scripted seller agents are a demo: only the shared demo accounts can invite them.
   return (
     <SealedBids
       t={t}
       agents={DEMO_USERS.some((u) => u.id === user.id)}
-      qa={<BuyerQA key="qa" questions={questions} open={t.status === "OPEN" && new Date() < new Date(t.closesAt)} />}
+      qa={<BuyerQA key="qa" questions={questions} summary={summary} open={t.status === "OPEN" && new Date() < new Date(t.closesAt)} />}
     />
   );
 }

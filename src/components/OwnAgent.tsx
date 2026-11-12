@@ -47,7 +47,7 @@ export function OwnAgent({
     startRun(async () => {
       const r = await runAgentNowAction();
       if (!r.ok) return notifyError(r.error);
-      const did = [r.bids && `${plural(r.bids, "bid")} sealed`, r.answers && `${plural(r.answers, "question")} answered`, r.skipped && `${r.skipped} skipped`].filter(Boolean);
+      const did = [r.bids && `${plural(r.bids, "bid")} sealed`, r.asked && `asked the tender owner ${plural(r.asked, "question")}`, r.answers && `${plural(r.answers, "question")} answered`, r.skipped && `${r.skipped} skipped`].filter(Boolean);
       notifySuccess(did.length ? `Your agent: ${did.join(", ")}.` : "Nothing new for your agent: it has looked at every open tender.");
     });
 
@@ -58,7 +58,7 @@ export function OwnAgent({
           <h2 className="text-base">Let FairBid&apos;s AI agent bid for you</h2>
           <p className="text-sm text-muted">
             Say what you make, your price per piece, shipping and how long it takes. When a tender fits, your agent seals a bid from what you
-            wrote and answers buyers&apos; questions your description covers. It never bids on what you do not make, and an answer never changes a
+            wrote, asks the tender owner when the tender leaves out something it needs (a size, a material), and answers tender owners&apos; questions your description covers. It never bids on what you do not make, and an answer never changes a
             price.
           </p>
         </div>
@@ -105,14 +105,31 @@ export function OwnAgent({
       <div className="grid gap-2">
         <h3 className="text-sm font-medium">What your agent did lately</h3>
         {activity.length === 0 ? (
-          <p className="text-sm text-muted">Nothing yet. Once it is on, it looks at every open tender and every new one a buyer posts.</p>
+          <p className="text-sm text-muted">Nothing yet. Once it is on, it looks at every open tender and every new one a tender owner posts.</p>
         ) : (
           <ul className="grid border-t border-line">
             {activity.map((a) => (
               <li key={a.id} className="grid gap-x-3 border-b border-line py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline">
-                <Link href={`/tender/${a.tenderId}`} className="hover:text-dye">
-                  {a.text}
-                </Link>
+                <div className="grid gap-1.5">
+                  <Link href={`/tender/${a.tenderId}`} className={a.kind === "agent.summary" ? "font-medium hover:text-dye" : "hover:text-dye"}>
+                    {a.text}
+                  </Link>
+                  {a.turns && a.turns.length > 0 && (
+                    // The talk with the tender owner's AI, turn by turn: published to every bidder, without who asked.
+                    <ol className="grid gap-1 border-l-2 border-line pl-3 text-xs text-muted">
+                      {a.turns.map((t, i) => (
+                        <li key={i} className="grid gap-0.5">
+                          <span className="text-ink">Asked: {t.question}</span>
+                          <span>
+                            {t.answer === null
+                              ? "Waiting for the tender owner."
+                              : `${t.answeredBy === "buyer" ? "The tender owner" : "Their AI, from the tender"}: ${t.answer}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
                 <time className="text-xs text-faint" dateTime={a.at}>
                   {dayTime(a.at)}
                 </time>

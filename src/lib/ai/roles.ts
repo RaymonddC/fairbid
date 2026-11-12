@@ -5,13 +5,16 @@
 import { z } from "zod";
 import { clampDraft, draftFrom, type Draft } from "../draft";
 import { runRole, type AiResult, type UserPart } from "./model";
-import { answerFromBrief, MAX_BRIEF, planFromBrief, type AgentPlan, type BriefTender } from "../agents/brief";
+import { answerFromBrief, MAX_BRIEF, planFromBrief, questionFromBrief, type AgentPlan, type BriefTender } from "../agents/brief";
 import {
   AGENT_ANSWERER,
+  BIDDER_AGENT_TURN,
+  BIDDER_SUMMARY,
   BLIND_SCORER,
   BUYER_ANSWERER,
   COLLUSION_REASONER,
   HS_CLASSIFIER,
+  OWNER_SUMMARY,
   PROPOSAL_REVIEWER,
   SELLER_AGENT,
   TENDER_WRITER,
@@ -298,16 +301,23 @@ export const AgentBidSchema = z.object({
 const toCents = (units: number) => Math.round(units * 100);
 const FIXTURE_MARK = "__fixture__";
 
+/** A question and its published answer on the tender, as every bidder sees it. */
+export interface PublishedAnswer {
+  question: string;
+  answer: string;
+}
+
 /** Whether a seller's brief fits a tender, and the bid if it does. The model reads the brief;
- * code multiplies the unit price by the quantity and checks every amount and the window. */
-export async function planAgentBid(brief: string, tender: BriefTender): Promise<AiResult<AgentPlan>> {
+ * code multiplies the unit price by the quantity and checks every amount and the window.
+ * Published answers on the tender are part of what the agent reads. */
+export async function planAgentBid(brief: string, tender: BriefTender, answers: PublishedAnswer[] = []): Promise<AiResult<AgentPlan>> {
   const text = brief.trim().slice(0, MAX_BRIEF);
   const fixture = (): AiResult<AgentPlan> => ({ value: planFromBrief(text, tender), source: "fixture" });
   const r = await runRole(
     {
       role: "seller_agent",
       system: SELLER_AGENT,
-      user: JSON.stringify({ sellerDescription: text, tender }, null, 1),
+      user: JSON.stringify({ sellerDescription: text, tender, publishedAnswers: answers }, null, 1),
       schema: AgentBidSchema,
       effort: "low",
     },
@@ -324,7 +334,7 @@ export async function planAgentBid(brief: string, tender: BriefTender): Promise<
   const lead = Math.round(v.leadTimeDays);
   // An answer that breaks a rule code can check is not trusted: the deterministic plan decides instead.
   if (!(unit > 0) || !(v.shipping >= 0) || !(v.fees >= 0) || !(lead >= 1)) return fixture();
-  if (lead > window) return { value: { kind: "skip", reason: `You need about ${lead} days; the buyer wants delivery within ${window}.` }, source: "model" };
+  if (lead > window) return { value: { kind: "skip", reason: `You need about ${lead} days; the tender owner wants delivery within ${window}.` }, source: "model" };
   return {
     value: {
       kind: "bid",
@@ -336,6 +346,129 @@ export async function planAgentBid(brief: string, tender: BriefTender): Promise<
     },
     source: "model",
   };
+}
+
+// ── 7b. Bidder agent's turn in the clarification round ───────────────────────
+
+/** One turn of the bidder agent's talk with the tender owner's AI before it bids. */
+export interface ConversationTurn {
+  question: string;
+  /** Null while the question waits for the tender owner. */
+  answer: string | null;
+  answeredBy?: "ai" | "buyer" | null;
+}
+
+/** The most turns the bidder agent takes on one tender. */
+export const MAX_TURNS = 3;
+
+export const AgentTurnSchema = z.object({ enough: z.boolean(), question: z.string() });
+
+// A question about money or other bidders is never the agent's to ask: clarification, never negotiation.
+const OFF_LIMITS =
+  /\b(price|prices|pricing|cost|costs|budget|discount|cheaper|win|wins|winning|other (?:bids?|bidders?|sellers?|offers?)|competitors?|how many (?:bids?|bidders?|sellers?))\b/i;
+
+/** Pure: the model's question, tidied, or null when it is empty, too short or long, or off limits. */
+export function tidyAgentQuestion(raw: unknown): string | null {
+  const q = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : "";
+  if (q.length < 10 || q.length > 300 || OFF_LIMITS.test(q)) return null;
+  return q;
+}
+
+/** The bidder agent's next question to the tender owner, or null when it has enough. With the
+ * AI off: the deterministic gap question (a size, then a material) as the first turn, nothing more. */
+export async function bidderAgentTurn(
+  brief: string,
+  tender: BriefTender,
+  published: PublishedAnswer[],
+  conversation: ConversationTurn[],
+): Promise<AiResult<string | null>> {
+  const text = brief.trim().slice(0, MAX_BRIEF);
+  if (conversation.length >= MAX_TURNS) return { value: null, source: "fixture" };
+  const fixture = () => {
+    const q = conversation.length === 0 ? questionFromBrief(text, tender, published.flatMap((a) => [a.question, a.answer])) : null;
+    return { enough: q === null, question: q ?? "" };
+  };
+  const r = await runRole(
+    {
+      role: "bidder_agent_turn",
+      system: BIDDER_AGENT_TURN,
+      user: JSON.stringify({ sellerDescription: text, tender, publishedAnswers: published, conversationSoFar: conversation, turnsLeft: MAX_TURNS - conversation.length }, null, 1),
+      schema: AgentTurnSchema,
+      effort: "low",
+    },
+    fixture,
+  );
+  if (r.value.enough) return { value: null, source: r.source };
+  const q = tidyAgentQuestion(r.value.question);
+  // Never the same question twice in one talk.
+  if (q && conversation.some((t) => t.question.toLowerCase() === q.toLowerCase())) return { value: null, source: r.source };
+  return { value: q, source: r.source };
+}
+
+// ── 7c. Summaries of the agents' talk ────────────────────────────────────────
+
+export const SummarySchema = z.object({ summary: z.string() });
+
+const said = (t: ConversationTurn) =>
+  t.answer === null
+    ? `asked "${t.question}", which waits for the tender owner`
+    : `asked "${t.question}"; ${t.answeredBy === "buyer" ? "the tender owner" : "the tender owner's AI"} answered from the tender: ${t.answer.replace(/\.$/, "")}`;
+
+const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.!?]$/.test(s) ? "" : "."}`;
+
+/** Pure: the plain bidder summary used when the AI is off. Never a price: the event log holds it. */
+export function bidderSummaryFixture(conversation: ConversationTurn[], outcome: { bid: true } | { bid: false; reason: string }): string {
+  const talk = conversation.length ? conversation.map(said).join("; then ") : "needed nothing clarified: the tender settled it";
+  const did = outcome.bid ? "sealed a bid from your prices" : `did not bid: ${outcome.reason.replace(/\.$/, "")}`;
+  return sentence(`${talk}. Then ${did}`).slice(0, 600);
+}
+
+/** For the bidder: what their agent asked, what it was told and what it did, in one short paragraph.
+ * It never quotes a price: it is kept in the event log, which the tender owner also reads. */
+export async function summarizeForBidder(
+  tenderTitle: string,
+  conversation: ConversationTurn[],
+  outcome: { bid: true } | { bid: false; reason: string },
+): Promise<AiResult<string>> {
+  const r = await runRole(
+    {
+      role: "bidder_summary",
+      system: BIDDER_SUMMARY,
+      user: JSON.stringify({ tender: tenderTitle, conversation, outcome }, null, 1),
+      schema: SummarySchema,
+      effort: "low",
+    },
+    () => ({ summary: bidderSummaryFixture(conversation, outcome) }),
+  );
+  const s = r.value.summary.replace(/\s+/g, " ").trim().slice(0, 600);
+  // A summary with a figure of money in it is not kept: the plain one is.
+  if (!s || /[€$£]\s*\d|\d\s*(?:€|eur|usd)\b/i.test(s)) return { value: bidderSummaryFixture(conversation, outcome), source: "fixture" };
+  return { value: s, source: r.source };
+}
+
+/** Pure: the plain tender owner summary used when the AI is off. No bidder is named or counted per question. */
+export function ownerSummaryFixture(questions: ConversationTurn[], sealedBids: number): string {
+  const bids = sealedBids === 0 ? "No sealed bids yet." : `${sealedBids} sealed bid${sealedBids === 1 ? "" : "s"} so far.`;
+  if (questions.length === 0) return `No bidder has asked anything yet. ${bids}`;
+  const items = questions.map((q) => `"${q.question}" (${q.answer === null ? "waits for you" : q.answeredBy === "buyer" ? "you answered" : "answered by your AI from the tender"})`);
+  const waiting = questions.filter((q) => q.answer === null).length;
+  return `Bidders asked ${questions.length} thing${questions.length === 1 ? "" : "s"}: ${items.join("; ")}.${waiting && questions.length > 1 ? ` ${waiting} wait${waiting === 1 ? "s" : ""} for you.` : ""} ${bids}`.slice(0, 900);
+}
+
+/** For the tender owner: what bidders and their agents asked on the tender so far, without who. */
+export async function summarizeForOwner(tenderTitle: string, questions: ConversationTurn[], sealedBids: number): Promise<AiResult<string>> {
+  const r = await runRole(
+    {
+      role: "owner_summary",
+      system: OWNER_SUMMARY,
+      user: JSON.stringify({ tender: tenderTitle, questions, sealedBids }, null, 1),
+      schema: SummarySchema,
+      effort: "low",
+    },
+    () => ({ summary: ownerSummaryFixture(questions, sealedBids) }),
+  );
+  const s = r.value.summary.replace(/\s+/g, " ").trim().slice(0, 900);
+  return s ? { value: s, source: r.source } : { value: ownerSummaryFixture(questions, sealedBids), source: "fixture" };
 }
 
 // ── 7. Agent answerer ────────────────────────────────────────────────────────

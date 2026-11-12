@@ -28,13 +28,13 @@ function describe(
       return { title: "A bid was sealed", detail: `Fingerprint ${String(p.sealedHash ?? "").slice(0, 12)}…, the price stays hidden.` };
     case "tender.closed":
       return {
-        title: p.early ? "The buyer closed bidding early, every bid opened at once" : "Bidding closed, every bid opened at once",
+        title: p.early ? "The tender owner closed bidding early, every bid opened at once" : "Bidding closed, every bid opened at once",
         detail: p.early && typeof p.scheduledClose === "string" ? `The published deadline was ${dayTime(p.scheduledClose)}.` : undefined,
       };
     case "review.flagged":
       return { title: "Two bids flagged as possibly coordinated", detail: "A person decides; a flag never removes a bid." };
     case "clarification.sent":
-      return { title: `${p.count ?? ""} questions sent to sellers`, detail: "Replies cannot change a price." };
+      return { title: `${p.count ?? ""} questions sent to bidders`, detail: "Replies cannot change a price." };
     case "clarification.asked": {
       const asked = Array.isArray(p.bids) ? (p.bids as unknown[]).map(letterOf) : [];
       return { title: `You asked bid${asked.length > 1 ? "s" : ""} ${asked.join(", ")} a question`, detail: "The same question to each; replies cannot change a price." };
@@ -46,12 +46,12 @@ function describe(
       };
     case "question.asked":
       return {
-        title: "A seller asked a question",
-        detail: `“${String(p.question ?? "").slice(0, 160)}” Who asked stays hidden, and the answer goes to every seller.`,
+        title: "A bidder asked a question",
+        detail: `“${String(p.question ?? "").slice(0, 160)}” Who asked stays hidden, and the answer goes to every bidder.`,
       };
     case "question.answered":
       return {
-        title: p.answeredBy === "buyer" ? "You answered a seller's question, for every seller" : "Your AI answered a seller's question from the tender",
+        title: p.answeredBy === "buyer" ? "You answered a bidder's question, for every bidder" : "Your AI answered a bidder's question from the tender",
         detail: `${String(p.answer ?? "").slice(0, 200)}${p.answeredBy === "buyer" ? "" : " An answer never changes the tender's terms."}`,
       };
     case "tender.scored":
@@ -70,7 +70,7 @@ function describe(
       const q = (p.questions ?? {}) as { count?: number; source?: string };
       return {
         title: "AI review finished",
-        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for sellers, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; questions cannot change a price.`,
+        detail: `${q.count ?? 0} question${q.count === 1 ? "" : "s"} for bidders, ${q.source === "model" ? "written by the AI" : "scripted"}. Code decides prices and flags; questions cannot change a price.`,
       };
     }
     case "award.started": {
@@ -81,7 +81,7 @@ function describe(
           (Number(p.phases ?? 1) > 1
             ? `Order of ${money(p.holdCents)}, paid in ${String(p.phases)} phases. Hold of ${money(p.firstHoldCents)} for phase 1 waiting for approval.`
             : `Hold of ${money(p.holdCents)} waiting for approval.`) +
-          (deposit ? ` The buyer agreed that the first payment, ${money(deposit.cents)}, is a non-refundable deposit.` : ""),
+          (deposit ? ` The tender owner agreed that the first payment, ${money(deposit.cents)}, is a non-refundable deposit.` : ""),
       };
     }
     case "award.authorized":
@@ -103,7 +103,7 @@ function describe(
         title: p.replacing
           ? `New hold requested for phase ${String(p.phase ?? "")}: ${money(p.amountCents)}`
           : `Hold requested for phase ${String(p.phase ?? "")} of ${String(p.phases ?? "")}: ${money(p.amountCents)}`,
-        detail: `PayPal order ${String(p.paypalOrderId ?? "")}, waiting for the buyer's approval`,
+        detail: `PayPal order ${String(p.paypalOrderId ?? "")}, waiting for the tender owner's approval`,
       };
     case "hold.authorized":
       return {
@@ -113,11 +113,11 @@ function describe(
     case "hold.declined":
       return {
         title: `PayPal declined the ${p.phase && Number(p.phase) > 1 ? `phase ${String(p.phase)} ` : ""}hold: ${money(p.amountCents)}`,
-        detail: `Nothing was reserved (${String(p.issue ?? "declined")}). The seller should not start this phase until a hold is in place.`,
+        detail: `Nothing was reserved (${String(p.issue ?? "declined")}). The bidder should not start this phase until a hold is in place.`,
       };
     case "order.ended":
       return {
-        title: "The buyer ended the order between phases",
+        title: "The tender owner ended the order between phases",
         detail: `${money(p.paidCents)} paid stays paid; ${money(p.neverChargedCents)} was never held and is never charged.`,
       };
     case "milestone.declined":
@@ -127,14 +127,14 @@ function describe(
       };
     // Reported by PayPal's webhook, not written by FairBid.
     case "paypal.order.approved":
-      return { title: "PayPal: the buyer approved the hold in the PayPal window", detail: `Order ${String(p.paypalOrderId ?? "")}` };
+      return { title: "PayPal: the tender owner approved the hold in the PayPal window", detail: `Order ${String(p.paypalOrderId ?? "")}` };
     case "paypal.hold.confirmed":
       return { title: `PayPal confirmed the hold: ${money(p.amountCents)}`, detail: `Authorization ${String(p.paypalAuthId ?? "")}, status ${String(p.status ?? "")}` };
     case "paypal.hold.released":
       return {
         title: p.phase && Number(p.phase) > 1 ? `PayPal released the phase ${String(p.phase)} hold` : "PayPal released the hold",
         detail: `${p.status === "EXPIRED" ? "It reached its 29-day limit. " : ""}${
-          p.unusedCents ? `${money(p.unusedCents)} unused went back to the buyer. ` : ""
+          p.unusedCents ? `${money(p.unusedCents)} unused went back to the tender owner. ` : ""
         }Nothing more can be paid from it.`,
       };
     case "paypal.payment.completed":
@@ -150,18 +150,31 @@ function describe(
         detail: `${String(p.milestone ?? "")}${p.reason ? `: ${reasonText(String(p.reason))}` : ""}. Nothing was paid; the step is open again.`,
       };
     case "paypal.payment.refunded":
-      return { title: `The seller refunded ${money(p.amountCents)} on PayPal`, detail: `${String(p.milestone ?? "")}. Refund ${String(p.refundId ?? "")}` };
+      return { title: `The bidder refunded ${money(p.amountCents)} on PayPal`, detail: `${String(p.milestone ?? "")}. Refund ${String(p.refundId ?? "")}` };
     case "paypal.payment.reversed":
       return { title: `PayPal reversed a payment: ${money(p.amountCents)}`, detail: `${String(p.milestone ?? "")}. Capture ${String(p.paypalCaptureId ?? "")}` };
-    // A seller's FairBid agent. Its reasons are for the seller: the buyer sees only what happened.
+    // A bidder's FairBid agent. Its reasons are for the bidder: the tender owner sees only what happened.
     case "agent.bid":
-      return { title: "A seller's FairBid agent sealed the bid above", detail: "Bid from the seller's own description of what they make, under the same rules as any bid." };
+      return { title: "A bidder's FairBid agent sealed the bid above", detail: "Bid from the bidder's own description of what they make, under the same rules as any bid." };
     case "agent.skipped":
-      return { title: "A seller's FairBid agent looked and did not bid" };
+      return { title: "A bidder's FairBid agent looked and did not bid" };
     case "agent.answered":
-      return { title: `A seller's FairBid agent answered for bid ${letterOf(p.bidId)}`, detail: "From the seller's own description; an answer cannot change a price." };
+      return { title: `A bidder's FairBid agent answered for bid ${letterOf(p.bidId)}`, detail: "From the bidder's own description; an answer cannot change a price." };
     case "agent.deferred":
-      return { title: "A seller's FairBid agent left a question for the seller to answer" };
+      return { title: "A bidder's FairBid agent left a question for the bidder to answer" };
+    // Who asked stays hidden: the question itself is the "A bidder asked a question" line.
+    case "agent.asked":
+      return { title: "A bidder's agent asked a question", detail: "The question and its answer go to every bidder, without who asked." };
+    case "agent.rechecked":
+      return {
+        title: p.outcome === "replaced" ? "A bidder's agent read an answer and replaced its sealed bid" : "A bidder's agent read an answer",
+        detail: "The price stays hidden until bidding closes.",
+      };
+    // The bidder's summary is for the bidder: it names the questions their agent asked, so it stays out of view here.
+    case "agent.summary":
+      return { title: "A bidder's agent summed up its work for its bidder" };
+    case "owner.summary":
+      return { title: "Your AI summed up bidders' questions", detail: String(p.summary ?? "").slice(0, 400) };
     default:
       return { title: kind };
   }
@@ -208,12 +221,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     <span className="text-sm font-medium">{d.title}</span>
                     {d.detail && <span className="text-sm text-muted">{d.detail}</span>}
                     {e.actor.startsWith("agent:") && (
-                      <span className="text-xs text-dye">{e.kind.startsWith("agent.") ? "By the seller's FairBid agent" : "By a seller's AI agent"}</span>
+                      <span className="text-xs text-dye">{e.kind.startsWith("agent.") ? "By a bidder's FairBid agent" : "By a bidder's AI agent"}</span>
                     )}
                     {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
                   </span>
                   <span className="ref grid text-[11px] text-faint sm:text-right">
-                    <span>{e.actor}</span>
+                    {/* An agent's actor names its bidder: shown as "agent" so a question cannot be traced to who asked. */}
+                    <span>{e.actor.startsWith("agent:") ? "agent" : e.actor}</span>
                     <span>{e.hash.slice(0, 10)}</span>
                   </span>
                 </li>
