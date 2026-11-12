@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "../generated/prisma/client";
 import type { ChannelKind } from "../generated/prisma/enums";
 import { appendEvent } from "./audit-store";
+import { inBackground, notifyBuyerOfNewBid, notifyBuyerOfReply } from "./channels/buyer-notify";
 import { relayClarification } from "./channels/relay";
 import { db } from "./db";
 import { holdCents, landedCost } from "./landed";
@@ -247,6 +248,8 @@ export async function addReply(clarificationId: string, bidId: string, body: str
   });
   // The in-app event is unchanged; a reply from a chat also names it.
   await appendEvent(c.tenderId, actor, "clarification.replied", channel === "inapp" ? { clarificationId, bidId } : { clarificationId, bidId, channel });
+  // After close, so the bid letter is all the buyer's chat learns; never the seller's name.
+  inBackground(() => notifyBuyerOfReply(clarificationId, bidId, text));
 }
 
 // ── Price and score ──────────────────────────────────────────────────────────
@@ -825,6 +828,7 @@ export async function submitBid(tenderId: string, sellerId: string, input: BidIn
     { kind: "shipping" as const, amountCents: input.shippingCents, source: "seller" },
     { kind: "fees" as const, amountCents: input.feesCents, source: "seller" },
   ];
+  const isNew = !(await db.bid.findUnique({ where: { tenderId_sellerId: { tenderId, sellerId } }, select: { id: true } }));
   await db.$transaction(async (tx) => {
     const bid = await tx.bid.upsert({
       where: { tenderId_sellerId: { tenderId, sellerId } },
@@ -836,6 +840,8 @@ export async function submitBid(tenderId: string, sellerId: string, input: BidIn
   });
   // The hash only: the event log must not leak a sealed price.
   await appendEvent(tenderId, actor, "bid.sealed", { sellerId, sealedHash });
+  // Only the count reaches the buyer's chat, and only for a new bid, not a replaced one.
+  if (isNew) inBackground(() => notifyBuyerOfNewBid(tenderId));
   // Check the duty rate for this code and origin now, so scoring finds it cached.
   if (tenderId !== DEMO_TENDER_ID) {
     const seller = await db.seller.findUnique({ where: { id: sellerId }, select: { country: true } });
