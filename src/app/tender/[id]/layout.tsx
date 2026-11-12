@@ -94,7 +94,7 @@ export default async function TenderLayout({ children, params }: { children: Rea
               <strong className="font-medium">
                 {needsHold.replacing ? `The hold for phase ${needsHold.phase} lapsed.` : `Phase ${needsHold.phase} is not held yet.`}
               </strong>{" "}
-              Hold {eur(needsHold.amountCents)} with PayPal so the seller can be paid for it.
+              Hold {eur(needsHold.amountCents)} with PayPal so the bidder can be paid for it.
             </span>
             <Link href={`/tender/${t.id}/award`} className="font-medium text-dye underline underline-offset-4">
               Go to payments

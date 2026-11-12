@@ -24,8 +24,8 @@ export function ChannelLinker({ channels, audience = "seller" }: { channels: Row
         <h2 className="text-base">{audience === "buyer" ? "Get updates in your chat" : "Get questions in your chat"}</h2>
         {audience === "buyer" ? (
           <p className="text-sm text-muted">
-            Optional. Hear when a sealed bid arrives (the count only: prices stay sealed until you close bidding), when a seller answers your
-            question, and when a seller asks one. Reply to a seller&apos;s question in the chat to answer every seller.
+            Optional. Hear when a sealed bid arrives (the count only: prices stay sealed until you close bidding), when a bidder answers your
+            question, and when a bidder asks one. Reply to a bidder&apos;s question in the chat to answer every bidder.
           </p>
         ) : (
           <p className="text-sm text-muted">

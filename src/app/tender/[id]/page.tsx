@@ -19,7 +19,7 @@ export default async function TenderPage({ params }: { params: Promise<{ id: str
     if (!view) notFound();
     // Sellers' questions to the buyer, published to every seller without who asked.
     const questions = await listTenderQuestions(id, user.sellerId!);
-    return <SellerBid t={view} qa={<SellerQA tenderId={id} questions={questions} open={view.open} />} />;
+    return <SellerBid t={view} qa={<SellerQA key="qa" tenderId={id} questions={questions} open={view.open} />} />;
   }
 
   const t = await tenderView(id);
@@ -30,7 +30,7 @@ export default async function TenderPage({ params }: { params: Promise<{ id: str
     <SealedBids
       t={t}
       agents={DEMO_USERS.some((u) => u.id === user.id)}
-      qa={<BuyerQA questions={questions} open={t.status === "OPEN" && new Date() < new Date(t.closesAt)} />}
+      qa={<BuyerQA key="qa" questions={questions} open={t.status === "OPEN" && new Date() < new Date(t.closesAt)} />}
     />
   );
 }

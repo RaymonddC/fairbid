@@ -232,7 +232,7 @@ export function Compare({ t }: { t: TenderView }) {
               {winnerId && <span className="stamp">Awarded</span>}
             </div>
             <p className="text-sm text-muted">
-              Highest score inside the budget. PayPal holds {eur(top.holdCents)} for the seller (goods and shipping) and pays it out step by
+              Highest score inside the budget. PayPal holds {eur(top.holdCents)} for the bidder (goods and shipping) and pays it out step by
               step as the order moves, starting with the deposit; you pay the {eur(top.dutyCents)} import duty{hasVat ? ", import VAT" : ""} and broker fees at the border.
             </p>
             <Link href={`/tender/${t.id}/award${winnerId ? "" : `?bid=${top.id}`}`} className={linkButton.primary}>

@@ -95,7 +95,7 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
             <h3 className="text-sm">Held one phase at a time</h3>
             <p className="text-xs text-muted">
               A PayPal hold lasts 29 days and cannot be extended, so this {t.spec.deliveryDays}-day order is held in {phases.length} phases. You
-              approve each phase&apos;s hold in PayPal when that phase starts; the seller starts a phase once its money is held.
+              approve each phase&apos;s hold in PayPal when that phase starts; the bidder starts a phase once its money is held.
             </p>
             <ol className="grid gap-1 text-sm">
               {phases.map((p) => (
@@ -148,7 +148,7 @@ function AwardStart({ t, bidId }: { t: TenderView; bidId?: string }) {
         <div className="grid gap-1">
           <h3 className="text-base">{phased ? `Hold phase 1: ${eur(first)}` : `Hold ${eur(bid.holdCents)} with PayPal`}</h3>
           <p className="text-sm text-muted">
-            Log in with your PayPal buyer account in the window that opens. The money stays in your account, reserved for the seller; nothing
+            Log in with your PayPal sandbox account in the window that opens. The money stays in your account, reserved for the bidder; nothing
             is paid until you confirm a step.
           </p>
         </div>
