@@ -73,7 +73,7 @@ export function QuestBoard({ quests }: { quests: Quest[] }) {
     <section className="grid gap-4" aria-labelledby="board-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 id="board-title" className="text-base">
-          Quest board
+          Every tender you can see
         </h2>
         <p className="text-xs text-muted" aria-live="polite">
           {shown.length} of {quests.length} tenders
@@ -157,12 +157,13 @@ function QuestCard({ q }: { q: Quest }) {
     >
       <div className="grid gap-3">
         <div className="flex items-start gap-3">
-          <span className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-canvas ring-1 ring-line">
-            {q.photo && (
-              // eslint-disable-next-line @next/next/no-img-element
+          {/* Only a real photo gets a tile: an empty square reads as broken. */}
+          {q.photo && (
+            <span className="h-14 w-14 shrink-0 overflow-hidden rounded-[3px] ring-1 ring-line">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={q.photo} alt="" className="h-full w-full object-cover" />
-            )}
-          </span>
+            </span>
+          )}
           <div className="grid min-w-0 flex-1 gap-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <StatePill state={q.state} />
@@ -192,13 +193,10 @@ function QuestCard({ q }: { q: Quest }) {
           </div>
         </dl>
 
-        <ul className="flex flex-wrap gap-1.5" aria-label="Scored on">
-          {q.criteria.map((c) => (
-            <li key={c.name} className="rounded-full bg-dye-soft px-2 py-0.5 text-xs text-dye">
-              {c.name} {c.weightPct}%
-            </li>
-          ))}
-        </ul>
+        {/* The criteria as one line of text, not a row of pills. */}
+        <p className="text-xs text-muted">
+          Scored on {q.criteria.map((c) => `${c.name.toLowerCase()} ${c.weightPct}%`).join(", ")}
+        </p>
 
         {q.reason && <p className="rounded-lg bg-canvas p-3 text-sm text-muted">{q.reason}</p>}
       </div>
