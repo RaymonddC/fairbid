@@ -35,7 +35,7 @@ export interface Channel {
 export function formatQuestion(tenderTitle: string, question: string, tenderUrl?: string): string {
   const title = tenderTitle.length > 120 ? `${tenderTitle.slice(0, 117)}...` : tenderTitle;
   return [
-    `FairBid: a buyer has a question about your bid on "${title}".`,
+    `FairBid: a tender owner has a question about your bid on "${title}".`,
     "",
     question,
     "",

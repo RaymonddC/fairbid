@@ -32,7 +32,7 @@ const qaOut = (q: PublishedQuestion) => ({
   question: q.question,
   asked_by_me: q.mine ?? false,
   answer: q.answer,
-  answered_by: q.answeredBy === "ai" ? "the buyer's AI, from the tender" : q.answeredBy === "buyer" ? "the buyer" : null,
+  answered_by: q.answeredBy === "ai" ? "the tender owner's AI, from the tender" : q.answeredBy === "buyer" ? "the tender owner" : null,
   waiting_for_buyer: q.answer === null,
 });
 
@@ -79,7 +79,7 @@ export function buildSellerServer(sellerId: string): McpServer {
     {
       title: "Read a tender",
       description:
-        "The full tender: the buyer's need, the scoring criteria with their rubrics, duty and VAT rates, your own sealed bid if any, questions the buyer sent you, and sellers' questions to the buyer with the published answers (questions_to_buyer). Other sellers' bids are never shown.",
+        "The full tender: the tender owner's need, the scoring criteria with their rubrics, duty and VAT rates, your own sealed bid if any, questions the tender owner sent you, and bidders' questions to the tender owner with the published answers (questions_to_buyer). Other bidders' bids are never shown.",
       inputSchema: { tender_id: z.string().describe("From list_open_tenders") },
       annotations: { readOnlyHint: true },
     },
@@ -123,8 +123,8 @@ export function buildSellerServer(sellerId: string): McpServer {
   server.registerTool(
     "ask_buyer",
     {
-      title: "Ask the buyer a question",
-      description: `Asks the buyer a question about an open tender before you bid, for example about size, material or packing. The answer is published to every seller, and nobody is told who asked. The buyer's AI answers at once when the published tender settles it; otherwise the question waits for the buyer: read it later in get_tender's questions_to_buyer. An answer never changes the tender's terms. At most ${QUESTIONS_PER_SELLER} questions per tender, ${QUESTION_MAX} characters each.`,
+      title: "Ask the tender owner a question",
+      description: `Asks the tender owner a question about an open tender before you bid, for example about size, material or packing. The answer is published to every bidder, and nobody is told who asked. The tender owner's AI answers at once when the published tender settles it; otherwise the question waits for the tender owner: read it later in get_tender's questions_to_buyer. An answer never changes the tender's terms. At most ${QUESTIONS_PER_SELLER} questions per tender, ${QUESTION_MAX} characters each.`,
       inputSchema: { tender_id: z.string(), question: z.string().min(1).max(QUESTION_MAX) },
       annotations: { destructiveHint: false },
     },
@@ -136,7 +136,7 @@ export function buildSellerServer(sellerId: string): McpServer {
     {
       title: "Submit a sealed bid",
       description:
-        "Seals your bid on an open tender, or replaces your earlier bid while bidding is open. Amounts are whole units of the tender's currency. Nobody, the buyer included, sees it before the tender closes. Buyers compare bids at delivered cost, so quote shipping and fees honestly.",
+        "Seals your bid on an open tender, or replaces your earlier bid while bidding is open. Amounts are whole units of the tender's currency. Nobody, the tender owner included, sees it before the tender closes. Tender owners compare bids at delivered cost, so quote shipping and fees honestly.",
       inputSchema: {
         tender_id: z.string(),
         goods: z.number().int().positive().describe("Price for the whole quantity, before shipping"),
@@ -199,7 +199,7 @@ export function buildSellerServer(sellerId: string): McpServer {
             next: v.won.next.kind === "pay"
               ? { phase: v.won.next.phase, held: true }
               : v.won.next.kind === "hold"
-                ? { phase: v.won.next.phase, held: false, waiting_for: v.won.next.replacing ? "a new hold: the last one lapsed" : "the buyer to hold this phase" }
+                ? { phase: v.won.next.phase, held: false, waiting_for: v.won.next.replacing ? "a new hold: the last one lapsed" : "the tender owner to hold this phase" }
                 : null,
             deposit: v.won.milestones[0] && { milestone: v.won.milestones[0].name, amount: units(v.won.milestones[0].plannedCents), non_refundable: true },
           },
@@ -214,7 +214,7 @@ export function buildSellerServer(sellerId: string): McpServer {
     {
       title: "Why my bid lost",
       description:
-        "After the award, if your bid did not win: your rank, your score on each criterion against the winning bid's, the weighted points you lost on each, both delivered costs, and a short summary. Use it to price your next bid. The winning seller's name, price lines and product details are never shown.",
+        "After the award, if your bid did not win: your rank, your score on each criterion against the winning bid's, the weighted points you lost on each, both delivered costs, and a short summary. Use it to price your next bid. The winning bidder's name, price lines and product details are never shown.",
       inputSchema: { tender_id: z.string() },
       annotations: { readOnlyHint: true },
     },
@@ -225,7 +225,7 @@ export function buildSellerServer(sellerId: string): McpServer {
         if (!v.myBid) throw new StepError("You did not bid on this tender.");
         if (v.won) throw new StepError("Your bid won this tender: see get_my_bid_status for payments.");
         const d = v.debrief;
-        if (!d) throw new StepError("No debrief yet: it is ready once the buyer's award is final.");
+        if (!d) throw new StepError("No debrief yet: it is ready once the tender owner's award is final.");
         return {
           summary: d.summary,
           rank: d.rank,
@@ -256,8 +256,8 @@ export function buildSellerServer(sellerId: string): McpServer {
   server.registerTool(
     "answer_clarification",
     {
-      title: "Answer a buyer's question",
-      description: "Replies to a question the buyer sent about your bid. An answer can explain, never change your price.",
+      title: "Answer a tender owner's question",
+      description: "Replies to a question the tender owner sent about your bid. An answer can explain, never change your price.",
       inputSchema: { clarification_id: z.string(), body: z.string().min(1).max(1000) },
       annotations: { idempotentHint: true },
     },

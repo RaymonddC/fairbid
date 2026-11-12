@@ -101,7 +101,7 @@ describe("PayPal amounts and reasons", () => {
   });
 
   it("puts reasons in plain words and never shows a bare code", () => {
-    assert.equal(reasonText("ECHECK"), "the buyer paid by eCheck, which takes a few days to clear");
+    assert.equal(reasonText("ECHECK"), "the tender owner paid by eCheck, which takes a few days to clear");
     assert.equal(reasonText("SOME_NEW_CODE"), "some new code");
     assert.equal(reasonText(undefined), undefined);
   });

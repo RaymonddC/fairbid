@@ -20,7 +20,7 @@ function error(status: number, code: string, message: string, requestId: string)
 async function handle(req: Request): Promise<Response> {
   const requestId = randomUUID();
   const sellerId = await sellerForAuthorization(req.headers.get("authorization"));
-  if (!sellerId) return error(401, "unauthorized", "Send your seller API key as: Authorization: Bearer <key>. Make one on your FairBid dashboard; see /agents.", requestId);
+  if (!sellerId) return error(401, "unauthorized", "Send your bidder API key as: Authorization: Bearer <key>. Make one on your FairBid dashboard; see /agents.", requestId);
   if (!perSeller.hit(sellerId)) return error(429, "rate_limited", "Too many requests. Slow down to 2 a second.", requestId);
 
   const server = buildSellerServer(sellerId);

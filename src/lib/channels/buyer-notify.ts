@@ -1,4 +1,4 @@
-// Updates to a buyer's linked chat (Telegram), and the buyer's answer to a seller's
+// Updates to a buyer's linked chat (Telegram), and the tender owner's answer to a seller's
 // question when it comes back as a reply. Optional like every channel: nothing here throws
 // into the action that caused it, and a chat that is down never blocks anything. Before
 // close a buyer learns only the count of bids, never a price, a seller or a letter.
@@ -16,7 +16,7 @@ import type { MessageChannel } from "./types";
  * otherwise (scripts, tests). The caller never waits for a chat. */
 export function inBackground(fn: () => Promise<unknown>) {
   const run = () =>
-    fn().catch((error) => log.warn("buyer notification failed", { error: error instanceof Error ? error.message : String(error) }));
+    fn().catch((error) => log.warn("tender owner notification failed", { error: error instanceof Error ? error.message : String(error) }));
   try {
     after(run);
   } catch {
@@ -43,7 +43,7 @@ export async function notifyBuyer(accountId: string, text: string, opts: { tende
       }),
     );
   } catch (error) {
-    log.warn("buyer notify failed", { accountId, error: error instanceof Error ? error.message : String(error) });
+    log.warn("tender owner notify failed", { accountId, error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -72,13 +72,13 @@ export async function notifyBuyerOfSellerQuestion(tenderId: string, questionId: 
     if (!t?.buyerId) return;
     await notifyBuyer(t.buyerId, sellerQuestionText(t.title, questionText), { tenderQuestionId: questionId });
   } catch (error) {
-    log.warn("seller question notify failed", { tenderId, questionId, error: error instanceof Error ? error.message : String(error) });
+    log.warn("bidder question notify failed", { tenderId, questionId, error: error instanceof Error ? error.message : String(error) });
   }
 }
 
 const MAX_ANSWER = 1000;
 
-/** The buyer's answer to a seller's question, sent as a reply in the chat. Written only when
+/** The buyer's answer to a bidder's question, sent as a reply in the chat. Written only when
  * this buyer owns the tender and nobody answered it yet. Returns the words to reply with. */
 export async function answerQuestionFromChat(accountId: string, tenderQuestionId: string, text: string): Promise<string> {
   const answer = text.trim();
@@ -89,7 +89,7 @@ export async function answerQuestionFromChat(accountId: string, tenderQuestionId
   const { answerTenderQuestion } = await import("../tender-questions");
   try {
     await answerTenderQuestion({ questionId: tenderQuestionId, buyerAccountId: accountId, answer });
-    return "Thank you. Your answer is published to every seller on this tender.";
+    return "Thank you. Your answer is published to every bidder on this tender.";
   } catch (error) {
     return error instanceof Error ? error.message : "That answer could not be saved. Answer in FairBid instead.";
   }

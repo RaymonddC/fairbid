@@ -119,18 +119,18 @@ export function interpret(event: WebhookEvent): Change | null {
   return null;
 }
 
-/** PayPal's reason codes for a payment that is pending or denied, in the buyer's words. */
+/** PayPal's reason codes for a payment that is pending or denied, in the tender owner's words. */
 export const REASONS: Record<string, string> = {
-  ECHECK: "the buyer paid by eCheck, which takes a few days to clear",
+  ECHECK: "the tender owner paid by eCheck, which takes a few days to clear",
   PENDING_REVIEW: "PayPal is reviewing it",
   DECLINED_BY_RISK_FRAUD_FILTERS: "PayPal's fraud filters stopped it",
-  INTERNATIONAL_WITHDRAWAL: "the seller's account must accept international payments first",
-  UNILATERAL: "the seller's PayPal account is not confirmed",
-  RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION: "the seller must accept it in their PayPal account",
-  VERIFICATION_REQUIRED: "the seller's PayPal account must be verified first",
+  INTERNATIONAL_WITHDRAWAL: "the bidder's account must accept international payments first",
+  UNILATERAL: "the bidder's PayPal account is not confirmed",
+  RECEIVING_PREFERENCE_MANDATES_MANUAL_ACTION: "the bidder must accept it in their PayPal account",
+  VERIFICATION_REQUIRED: "the bidder's PayPal account must be verified first",
   TRANSACTION_APPROVED_AWAITING_FUNDING: "PayPal approved it and is waiting for the funds",
-  BUYER_COMPLAINT: "the buyer opened a complaint",
-  CHARGEBACK: "the buyer's bank reversed it",
+  BUYER_COMPLAINT: "the tender owner opened a complaint",
+  CHARGEBACK: "the tender owner's bank reversed it",
   REFUNDED: "it was refunded",
   OTHER: "PayPal gave no reason",
 };
