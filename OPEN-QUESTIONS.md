@@ -18,7 +18,6 @@ Minimal is an MCP endpoint and scripted bots. Full is bots that price with their
 ## Still to verify
 
 - Hold renewal: retest due on 10 Nov
-- WhatsApp sending: needs a paid Twilio account, and probably a Content API template. Untested
 - AG Grid licence terms for row grouping and master-detail in a public repo
 - MCP inside a Next.js route handler
 - Demo tender duty: it stays on the assumed 12% on purpose, marked "Demo rate" on screen. Easyship's checked rate for 6302.51 into Germany is 9.6% from Indonesia (EU GSP) and 0% from Vietnam (EU-Vietnam FTA); on those rates bid A lands at EUR 2,996, inside the budget, and bid B is cheapest delivered. Switching the demo to real rates changes the story the login page and pitch tell
