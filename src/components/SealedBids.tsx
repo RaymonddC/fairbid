@@ -19,7 +19,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
       <section className="grid content-start gap-3" aria-labelledby="bids-title">
         <SectionTitle id="bids-title" aside={t.sealed ? `Opens ${dayTime(t.closesAt)}` : `Opened ${dayTime(t.closesAt)}`}>
-          {t.sealed ? `${t.bidCount} sealed bids` : `${t.bidCount} bids, opened`}
+          {t.sealed ? `${t.bidCount} sealed bid${t.bidCount === 1 ? "" : "s"}` : `${t.bidCount} bid${t.bidCount === 1 ? "" : "s"}, opened`}
         </SectionTitle>
 
         <div className="notice overflow-hidden rounded-xl">
