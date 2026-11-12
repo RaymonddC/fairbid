@@ -10,7 +10,14 @@ import { log } from "../log";
 import { bidLetter } from "../scoring";
 import { CHANNELS } from "./registry";
 import { deliverToBuyer, newBidText, replyText, sellerQuestionText } from "./buyer";
-import type { MessageChannel } from "./types";
+import { tapData } from "./bot-text";
+import { siteUrl } from "./site-url";
+import type { Button, MessageChannel } from "./types";
+
+const openButton = (tenderId: string, text = "Open in FairBid", path = ""): Button[] => {
+  const url = siteUrl(`/tender/${tenderId}${path}`);
+  return url ? [{ text, url }] : [];
+};
 
 /** Runs a notification after the response when there is a request, or in the background
  * otherwise (scripts, tests). The caller never waits for a chat. */
@@ -26,7 +33,7 @@ export function inBackground(fn: () => Promise<unknown>) {
 
 /** Sends text to the buyer's linked chats and records each message, so a reply finds it.
  * Never throws. */
-export async function notifyBuyer(accountId: string, text: string, opts: { tenderQuestionId?: string } = {}): Promise<void> {
+export async function notifyBuyer(accountId: string, text: string, opts: { tenderQuestionId?: string; buttons?: Button[][] } = {}): Promise<void> {
   try {
     const links = await db.buyerChannelLink.findMany({ where: { accountId, kind: "telegram" } });
     await Promise.all(
@@ -39,7 +46,7 @@ export async function notifyBuyer(accountId: string, text: string, opts: { tende
             await db.buyerChannelMessage.create({ data: { linkId: link.id, externalId, tenderQuestionId: opts.tenderQuestionId ?? null } });
           },
           warn: (message, fields) => log.warn(message, { ...fields, kind: link.kind, accountId }),
-        });
+        }, opts.tenderQuestionId ? undefined : opts.buttons);
       }),
     );
   } catch (error) {
@@ -61,6 +68,7 @@ ${question}
 Your agent answered from the tender, for every bidder:
 
 ${answer}`,
+      { buttons: [openButton(tenderId)] },
     );
   } catch (error) {
     log.warn("tender owner AI answer notify failed", { tenderId, error: error instanceof Error ? error.message : String(error) });
@@ -71,7 +79,9 @@ ${answer}`,
 export async function notifyBuyerOfNewBid(tenderId: string): Promise<void> {
   const t = await db.tender.findUnique({ where: { id: tenderId }, select: { title: true, buyerId: true, status: true, _count: { select: { bids: true } } } });
   if (!t?.buyerId || t.status !== "OPEN") return;
-  await notifyBuyer(t.buyerId, newBidText(t.title, t._count.bids));
+  await notifyBuyer(t.buyerId, newBidText(t.title, t._count.bids), {
+    buttons: [[{ text: "Close bidding now", data: tapData.owner("c", tenderId) }, ...openButton(tenderId)]],
+  });
 }
 
 /** A seller answered the buyer's clarification. Named by bid letter, as the buyer scores blind. */
@@ -82,7 +92,7 @@ export async function notifyBuyerOfReply(clarificationId: string, bidId: string,
   const bids = await db.bid.findMany({ where: { tenderId: c.tender.id }, orderBy: [{ submittedAt: "asc" }, { sellerId: "asc" }], select: { id: true } });
   const index = bids.findIndex((b) => b.id === bidId);
   if (index < 0) return;
-  await notifyBuyer(c.tender.buyerId, replyText(c.tender.title, bidLetter(index), answer));
+  await notifyBuyer(c.tender.buyerId, replyText(c.tender.title, bidLetter(index), answer), { buttons: [openButton(c.tender.id, "Compare bids", "/compare")] });
 }
 
 /** A seller asked about an open tender. The buyer can answer by replying in the chat. */

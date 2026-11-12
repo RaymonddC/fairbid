@@ -23,7 +23,7 @@ async function main() {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!base || !base.startsWith("https://")) throw new Error("PUBLIC_BASE_URL must be the public https URL.");
     if (!secret || !/^[A-Za-z0-9_-]{16,256}$/.test(secret)) throw new Error("TELEGRAM_WEBHOOK_SECRET must be 16-256 characters of A-Z a-z 0-9 _ -.");
-    const r = await call("setWebhook", { url: `${base}/api/webhooks/telegram`, secret_token: secret, allowed_updates: ["message"], drop_pending_updates: true });
+    const r = await call("setWebhook", { url: `${base}/api/webhooks/telegram`, secret_token: secret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
     console.log(r.ok ? `Webhook set to ${base}/api/webhooks/telegram` : `Telegram refused: ${r.description}`);
   } else {
     const r = await call("getWebhookInfo");

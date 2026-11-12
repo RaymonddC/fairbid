@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const id = `whatsapp:${msg.externalId}`;
   if (!(await firstDelivery(id, "whatsapp.message"))) return xml("<Response/>");
   try {
-    return xml(twiml(await handleInbound(msg)));
+    return xml(twiml((await handleInbound(msg))?.text ?? ""));
   } catch (error) {
     log.error("whatsapp message failed", error);
     await forgetDelivery(id);

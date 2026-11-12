@@ -27,6 +27,7 @@ import { askTenderQuestion, canAskMore, listTenderQuestions, type PublishedQuest
 import { StepError, addReply, submitBid } from "../workflow";
 import type { BriefTender } from "./brief";
 import { notifySeller } from "../channels/seller-notify";
+import { tapData } from "../channels/bot-text";
 
 export const agentActor = (sellerId: string) => `agent:${sellerId}`;
 
@@ -201,7 +202,7 @@ async function workTender(
         // The bidder sees it in their own chat too; never throws.
         await notifySeller(seller.id, `FairBid: your agent on "${tender.title}":
 
-${s.value}`);
+${s.value}`, [[{ text: "Your bids", data: tapData.agent("bids") }]]);
       } catch (error) {
         log.error("own agent summary failed", error, { sellerId: seller.id, tenderId: tender.id });
       }

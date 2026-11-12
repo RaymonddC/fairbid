@@ -16,7 +16,12 @@ export interface InboundMessage {
   replyToExternalId?: string;
   /** False when the chat is a group or channel. Only a private chat may be linked. */
   private: boolean;
+  /** Set when the person tapped one of our buttons instead of typing: Telegram's callback id and the button's data. */
+  tap?: { id: string; data: string };
 }
+
+/** A button under a message. `data` comes back as a tap; `url` opens a page. */
+export type Button = { text: string; data: string } | { text: string; url: string };
 
 export interface Channel {
   kind: MessageChannel;
@@ -24,8 +29,9 @@ export interface Channel {
   /** True when every setting this channel needs is present. An unconfigured channel is off. */
   configured(): boolean;
   /** Sends text to an address. Resolves with the channel's id for the sent message.
-   * `expectReply: false` sends an update that needs no answer (default: the reply box opens). */
-  send(address: string, text: string, opts?: { expectReply?: boolean }): Promise<{ externalId: string }>;
+   * `expectReply: false` sends an update that needs no answer (default: the reply box opens).
+   * `buttons` go under the message, row by row, where the channel has them; they need no reply box. */
+  send(address: string, text: string, opts?: { expectReply?: boolean; buttons?: Button[][] }): Promise<{ externalId: string }>;
   /** Reads the body of a webhook call. Null when it holds no message we act on. */
   parseInbound(payload: unknown): InboundMessage | null;
 }

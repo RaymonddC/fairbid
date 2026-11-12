@@ -8,6 +8,8 @@ import { db } from "../db";
 import { StepError, addReply, isUniqueViolation } from "../workflow";
 import { BUYER_HELP, pickLinkCode, routeInbound } from "./buyer";
 import { answerQuestionFromChat } from "./buyer-notify";
+import { answerPrompt, chatWithAgent, refreshCommands, runCommand, runTap, type BotReply, type ChatSides } from "./bot";
+import { parseCommand } from "./bot-text";
 import { CHANNELS } from "./registry";
 import { telegramLink } from "./telegram";
 import { parseLinkCommand, type InboundMessage, type MessageChannel } from "./types";
@@ -95,16 +97,24 @@ const MAX_ANSWER = 1000; // the limit addReply keeps
 
 const HOW_TO_LINK = "This chat is not linked to FairBid. Sign in to FairBid as a bidder or a tender owner, open your dashboard, and press Link on this channel.";
 
-/** Handles one inbound message and returns the text to answer with. Throws only for
- * failures worth a retry (the database); anything a person caused is answered in words. */
-export async function handleInbound(msg: InboundMessage): Promise<string> {
-  const code = parseLinkCommand(msg.text);
+const say = (text: string): BotReply => ({ text });
+
+/** Handles one inbound message, or a tap on one of our buttons, and returns what to answer
+ * with (null when the answer was already sent). Throws only for failures worth a retry (the
+ * database); anything a person caused is answered in words. */
+export async function handleInbound(msg: InboundMessage): Promise<BotReply> {
+  const code = msg.tap ? null : parseLinkCommand(msg.text);
   const [link, buyerLink] = code
     ? [null, null]
     : await Promise.all([
         db.channelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } } }),
         db.buyerChannelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } } }),
       ]);
+  // Who is acting comes from the chat's links, never from what the message says.
+  const sides: ChatSides = { address: msg.address, ownerAccountId: buyerLink?.accountId ?? null, sellerId: link?.sellerId ?? null };
+  const telegram = msg.kind === "telegram";
+  if (msg.tap) return link || buyerLink ? (telegram ? runTap(msg, sides) : null) : say(HOW_TO_LINK);
+
   // A reply to a message sent to the buyer side of this chat belongs to the buyer, even when
   // the same chat is also a seller's.
   const buyerMessage =
@@ -121,20 +131,37 @@ export async function handleInbound(msg: InboundMessage): Promise<string> {
     buyerLinked: Boolean(buyerLink),
     repliesToBuyer: buyerMessage,
   });
-  if (route === "link") return linkChat(msg, code!);
-  if (route === "how-to-link") return HOW_TO_LINK;
-  if (route === "buyer-help") return BUYER_HELP;
-  if (route === "buyer-answer") return answerQuestionFromChat(buyerLink!.accountId, buyerMessage!.tenderQuestionId!, msg.text);
-  if (!link) return HOW_TO_LINK;
+  if (route === "link") return say(await linkChat(msg, code!));
+  if (!link && !buyerLink) return say(HOW_TO_LINK);
+  if (route === "buyer-answer") return say(await answerQuestionFromChat(buyerLink!.accountId, buyerMessage!.tenderQuestionId!, msg.text));
 
-  // The seller used Reply on one of our messages, or has exactly one question waiting.
+  if (telegram) {
+    // A reply to one of the bot's "type your question" messages.
+    if (link && msg.replyToExternalId) {
+      const prompt = await db.chatPrompt.findUnique({
+        where: { kind_address_externalId: { kind: msg.kind, address: msg.address, externalId: msg.replyToExternalId } },
+        select: { action: true, tenderId: true },
+      });
+      if (prompt) return answerPrompt(prompt, msg.text, link.sellerId);
+    }
+    const command = parseCommand(msg.text);
+    if (command) return runCommand(command, sides);
+  }
+  if (route === "buyer-help" || route === "how-to-link") return telegram ? chatWithAgent(msg.text, sides) : say(BUYER_HELP);
+  if (!link) return say(HOW_TO_LINK);
+
+  // The seller used Reply on one of our messages. On WhatsApp, which has no reliable Reply,
+  // a message may also answer the one question waiting; on Telegram anything else is a
+  // message to their agent.
   let target: { clarificationId: string; bidId: string } | null = null;
   if (msg.replyToExternalId) {
     target = await db.channelMessage.findUnique({
       where: { linkId_externalId: { linkId: link.id, externalId: msg.replyToExternalId } },
       select: { clarificationId: true, bidId: true },
     });
-    if (!target) return "I could not tell which question that answers. Reply to the question message itself.";
+    if (!target) return telegram ? chatWithAgent(msg.text, sides) : say("I could not tell which question that answers. Reply to the question message itself.");
+  } else if (telegram) {
+    return chatWithAgent(msg.text, sides);
   } else {
     const recent = await db.channelMessage.findMany({ where: { linkId: link.id }, orderBy: { sentAt: "desc" }, take: 20 });
     const replies = recent.length
@@ -142,14 +169,14 @@ export async function handleInbound(msg: InboundMessage): Promise<string> {
       : [];
     const replyOf = (m: { clarificationId: string; bidId: string }) => replies.find((r) => r.clarificationId === m.clarificationId && r.bidId === m.bidId);
     const open = recent.filter((m) => !replyOf(m));
-    if (open.length > 1) return `You have ${open.length} questions waiting. Reply to the message of the one you are answering, so the answer goes to the right tender owner.`;
+    if (open.length > 1) return say(`You have ${open.length} questions waiting. Reply to the message of the one you are answering, so the answer goes to the right tender owner.`);
     // A second message right after an answer continues it, as people write in bursts.
     const justAnswered = recent.find((m) => {
       const r = replyOf(m);
       return r && Date.now() - r.receivedAt.getTime() < FOLLOW_UP_MS;
     });
     target = open[0] ?? justAnswered ?? null;
-    if (!target) return "There is no question waiting for you. When a tender owner asks one, it appears here.";
+    if (!target) return say("There is no question waiting for you. When a tender owner asks one, it appears here.");
   }
 
   const account = await db.account.findFirst({ where: { sellerId: link.sellerId }, select: { id: true } });
@@ -160,14 +187,14 @@ export async function handleInbound(msg: InboundMessage): Promise<string> {
     select: { body: true },
   });
   const body = previous ? `${previous.body}\n\n${msg.text.trim()}` : msg.text;
-  if (body.trim().length > MAX_ANSWER) return `That would make the answer longer than ${MAX_ANSWER} characters. Shorten it, or finish in FairBid.`;
+  if (body.trim().length > MAX_ANSWER) return say(`That would make the answer longer than ${MAX_ANSWER} characters. Shorten it, or finish in FairBid.`);
   try {
     await addReply(target.clarificationId, target.bidId, body, account?.id ?? `seller:${link.sellerId}`, msg.kind);
   } catch (error) {
-    if (error instanceof StepError) return error.message;
+    if (error instanceof StepError) return say(error.message);
     throw error;
   }
-  return "Thank you. Your answer is recorded in FairBid.";
+  return say("Thank you. Your answer is recorded in FairBid.");
 }
 
 async function linkChat(msg: InboundMessage, code: string): Promise<string> {
@@ -190,7 +217,10 @@ async function linkChat(msg: InboundMessage, code: string): Promise<string> {
     db.channelLink.create({ data: { sellerId: row.sellerId, kind: msg.kind, address: msg.address } }),
     db.channelLinkCode.delete({ where: { codeHash: row.codeHash } }),
   ]);
-  return "Linked. Questions from tender owners will arrive here. Reply to a question to answer it; the in-app inbox keeps working too.";
+  if (msg.kind === "telegram") await refreshCommands(await sidesOfChat(msg));
+  return msg.kind === "telegram"
+    ? "Linked as a bidder. /open shows open tenders, where your agent can bid or you can ask the tender owner. /bids shows your bids, /agent switches your agent on or off. Or just write to your agent here."
+    : "Linked. Questions from tender owners will arrive here. Reply to a question to answer it; the in-app inbox keeps working too.";
 }
 
 async function linkBuyerChat(msg: InboundMessage, row: { codeHash: string; accountId: string }): Promise<string> {
@@ -201,7 +231,16 @@ async function linkBuyerChat(msg: InboundMessage, row: { codeHash: string; accou
     db.buyerChannelLink.create({ data: { accountId: row.accountId, kind: msg.kind, address: msg.address } }),
     db.buyerLinkCode.delete({ where: { codeHash: row.codeHash } }),
   ]);
-  return "Linked. Updates on your tenders arrive here: new sealed bids (the count only), answers from bidders, and bidders' questions, which you can answer by replying.";
+  await refreshCommands(await sidesOfChat(msg));
+  return "Linked as a tender owner. New sealed bids (the count only), bidders' questions and your agent's answers arrive here. /tenders shows your tenders with buttons to answer, sum up or close bidding. Or just write to your agent here.";
+}
+
+async function sidesOfChat(msg: InboundMessage): Promise<ChatSides> {
+  const [link, buyerLink] = await Promise.all([
+    db.channelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } }, select: { sellerId: true } }),
+    db.buyerChannelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } }, select: { accountId: true } }),
+  ]);
+  return { address: msg.address, sellerId: link?.sellerId ?? null, ownerAccountId: buyerLink?.accountId ?? null };
 }
 
 /** Records that a delivery was handled. False when it was already handled before. */

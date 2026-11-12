@@ -4,6 +4,8 @@
 // the same chat (one phone); they stay independent, and a reply goes to the side that sent
 // the message it replies to.
 
+import type { Button } from "./types";
+
 export type InboundRoute = "link" | "how-to-link" | "seller" | "buyer-answer" | "buyer-help";
 
 export interface RouteInput {
@@ -71,15 +73,15 @@ export const BUYER_HELP =
   "This chat gets your FairBid tender updates. To answer a bidder's question, use Reply on the question message itself. Everything else happens in FairBid.";
 
 export interface DeliverDeps {
-  send(address: string, text: string, opts: { expectReply: boolean }): Promise<{ externalId: string }>;
+  send(address: string, text: string, opts: { expectReply: boolean; buttons?: Button[][] }): Promise<{ externalId: string }>;
   record(externalId: string): Promise<void>;
   warn(message: string, fields: Record<string, unknown>): void;
 }
 
 /** Sends one message and records it. Never throws: a chat that is down never blocks anything. */
-export async function deliverToBuyer(address: string, text: string, expectReply: boolean, deps: DeliverDeps): Promise<boolean> {
+export async function deliverToBuyer(address: string, text: string, expectReply: boolean, deps: DeliverDeps, buttons?: Button[][]): Promise<boolean> {
   try {
-    const { externalId } = await deps.send(address, text, { expectReply });
+    const { externalId } = await deps.send(address, text, buttons ? { expectReply, buttons } : { expectReply });
     await deps.record(externalId);
     return true;
   } catch (error) {

@@ -11,7 +11,9 @@ import {
   BIDDER_AGENT_TURN,
   BIDDER_SUMMARY,
   BLIND_SCORER,
+  BIDDER_IN_CHARACTER,
   BUYER_ANSWERER,
+  CHAT_AGENT,
   COLLUSION_REASONER,
   HS_CLASSIFIER,
   OWNER_SUMMARY,
@@ -493,4 +495,56 @@ export async function answerFromSellerBrief(brief: string, question: string): Pr
   );
   const answer = r.value.answer.trim().slice(0, 1000);
   return { value: r.value.answerable && answer ? answer : null, source: r.source };
+}
+
+// ── 8. Chat agent ────────────────────────────────────────────────────────────
+
+export const ChatSchema = z.object({ reply: z.string() });
+
+/** The person's own agent answering a message in their chat, from a snapshot of what they may see.
+ * The snapshot is built by code and already leaves out anything sealed. */
+export async function chatAsAgent(message: string, sides: string[], snapshot: unknown, fixture: () => string): Promise<AiResult<string>> {
+  const r = await runRole(
+    { role: "chat_agent", system: CHAT_AGENT, user: JSON.stringify({ sides, snapshot, message: message.slice(0, 800) }, null, 1), schema: ChatSchema, effort: "low" },
+    () => ({ reply: fixture() }),
+  );
+  const reply = r.value.reply.replace(/[*_`#]/g, "").trim().slice(0, 1200);
+  return reply ? { value: reply, source: r.source } : { value: fixture(), source: "fixture" };
+}
+
+// ── 9. Demo bidder answerer ──────────────────────────────────────────────────
+
+export const InCharacterSchema = z.object({ answer: z.string() });
+
+/** A scripted demo bidder's answer to the tender owner's question, written by the model from
+ * that bidder's profile. Always returns an answer: the fixed reply when the AI is off. */
+export async function answerInCharacter(profile: string, question: string, fixed: string): Promise<AiResult<string>> {
+  const r = await runRole(
+    {
+      role: "bidder_in_character",
+      system: BIDDER_IN_CHARACTER,
+      user: JSON.stringify({ bidderProfile: profile, tenderOwnerQuestion: question.replace(/\s*Your price cannot change\.?\s*$/i, "") }, null, 1),
+      schema: InCharacterSchema,
+      effort: "low",
+    },
+    () => ({ answer: fixed }),
+  );
+  const answer = r.value.answer.replace(/[*_`#]/g, "").trim().slice(0, 600);
+  // An answer that names a figure of money is not sent: the fixed one is.
+  if (!answer || /[€$£]\s*\d|\d\s*(?:€|eur|usd)\b/i.test(answer)) return { value: fixed, source: "fixture" };
+  return { value: answer, source: r.source };
+}
+
+/** Pure: the review's questions when the AI is off, one per criterion only a person or the AI
+ * can judge, sent to every bid, so the clarification round still runs. */
+export function reviewFixture(input: ReviewInput, judged: (name: string) => boolean): ReviewQuestion[] {
+  const letters = input.bids.map((b) => b.letter);
+  return input.criteria
+    .filter((c) => judged(c.name))
+    .slice(0, 2)
+    .map((c) => ({
+      topic: c.name,
+      question: `The tender judges "${c.name}"${c.rubric ? ` (${c.rubric.replace(/\.$/, "")})` : ""}. How does your bid meet it, and what can you show the buyer to check it?`,
+      bids: letters,
+    }));
 }

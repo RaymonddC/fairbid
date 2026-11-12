@@ -11,6 +11,7 @@
 import { answerAsBuyer, summarizeForOwner, type PublishedTender } from "./ai/roles";
 import { appendEvent } from "./audit-store";
 import { inBackground, notifyBuyerOfAiAnswer, notifyBuyerOfSellerQuestion } from "./channels/buyer-notify";
+import { notifySellerOfAnswer } from "./channels/seller-notify";
 import { db } from "./db";
 import { log } from "./log";
 import { StepError } from "./workflow";
@@ -186,7 +187,7 @@ export async function answerTenderQuestion({
 }): Promise<PublishedQuestion> {
   const checked = checkAnswer(answer);
   if (!checked.ok) throw new StepError(checked.error);
-  const q = await db.tenderQuestion.findUnique({ where: { id: questionId }, include: { tender: { select: { buyerId: true, status: true, closesAt: true } } } });
+  const q = await db.tenderQuestion.findUnique({ where: { id: questionId }, include: { tender: { select: { buyerId: true, status: true, closesAt: true, title: true } } } });
   if (!q || q.tender.buyerId !== buyerAccountId) throw new StepError("Question not found.");
   if (!isOpen(q.tender)) throw new StepError("Bidding has closed, so this question can no longer be answered.");
   // Only an unanswered question: two answers to the same question would read as two rules.
@@ -198,6 +199,7 @@ export async function answerTenderQuestion({
   await appendEvent(q.tenderId, buyerAccountId, "question.answered", { questionId, answeredBy: "buyer", answer: checked.text });
   const row = await db.tenderQuestion.findUniqueOrThrow({ where: { id: questionId } });
   inBackground(() => refreshOwnerSummary(q.tenderId));
+  inBackground(() => notifySellerOfAnswer(q.sellerId, q.tenderId, q.tender.title, q.question, checked.text));
   return publish(row);
 }
 

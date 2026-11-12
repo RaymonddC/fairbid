@@ -20,8 +20,18 @@ export interface Persona {
   /** Days to deliver, as a share of the buyer's window. */
   leadShare: number;
   notes: (item: string) => string;
+  /** Who this bidder is, in their own words, for the AI that answers the tender owner's questions as them. */
+  profile: string;
+  /** The answer when the AI is off. */
   reply: string;
 }
+
+/** Answers one question as a persona, or null to leave it (for example to the seller's own agent). */
+export type AnswerFn = (p: Persona, question: string) => Promise<string | null>;
+
+// Traders B and C answer from the same words, so they send the same sentence.
+const TRADER_PROFILE =
+  "A trading company in Vietnam that buys batik-style textiles from a partner workshop and resells them. It does not name the workshop and has no photos of the making. Ships in cartons by sea and road freight, about 3 to 4 weeks.";
 
 export const PERSONAS: Persona[] = [
   {
@@ -32,6 +42,8 @@ export const PERSONAS: Persona[] = [
     feesShare: 0.049,
     leadShare: 0.86,
     notes: (item) => `Stamped ${item.toLowerCase()}, factory made. Duties may apply.`,
+    profile:
+      "A large textile exporter with a factory in Pekalongan, Java. The batik pattern is machine-printed on cotton; only the edges are finished by hand. Exports by sea freight in cartons of 50, about 4 weeks door to door. Can send a sample by courier within 5 days. Holds export papers and an HS classification for every product.",
     reply: "The base pattern is machine-printed; the edges are finished by hand in our factory.",
   },
   {
@@ -42,6 +54,7 @@ export const PERSONAS: Persona[] = [
     feesShare: 0.0375,
     leadShare: 0.75,
     notes: (item) => `${item} in batik style, carton packed, sea and road freight.`,
+    profile: TRADER_PROFILE,
     reply: "Our partner workshop makes them by hand.",
   },
   {
@@ -53,6 +66,7 @@ export const PERSONAS: Persona[] = [
     feesShare: 0.0373,
     leadShare: 0.75,
     notes: (item) => `${item} in batik style, carton packed, sea and road freight.`,
+    profile: TRADER_PROFILE,
     reply: "Our partner workshop makes them by hand.",
   },
   {
@@ -63,6 +77,8 @@ export const PERSONAS: Persona[] = [
     feesShare: 0.028,
     leadShare: 0.75,
     notes: (item) => `Hand-stamped ${item.toLowerCase()} by six named artisans in Yogyakarta, wax-resist batik.`,
+    profile:
+      "Sari runs a batik workshop in Yogyakarta with six artisans. Every piece is hand-stamped with wax (cap batik) on cotton and dyed by hand; the photos show the wax-resist marks. Ready in about 3 weeks, shipped by air or sea, folded, ten per bag in a carton. Can send one sample to the buyer before production.",
     reply: "Yes. Each piece is stamped by hand with wax (cap batik) in my Yogyakarta workshop; I can send a sample first.",
   },
 ];
@@ -93,7 +109,7 @@ interface OpenTender {
 }
 
 /** Runs one seller's agent once: bids on open tenders it has not bid on, and answers waiting questions. */
-export async function runBot(mcpUrl: string, key: string, p: Persona, only?: string): Promise<BotStep[]> {
+export async function runBot(mcpUrl: string, key: string, p: Persona, only?: string, answer?: AnswerFn): Promise<BotStep[]> {
   const steps: BotStep[] = [];
   const client = new Client({ name: `fairbid-bot-${p.sellerId}`, version: "1.0.0" });
   const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), { requestInit: { headers: { Authorization: `Bearer ${key}` } } });
@@ -127,9 +143,14 @@ export async function runBot(mcpUrl: string, key: string, p: Persona, only?: str
     // Questions arrive after close, so a named tender is checked even when it is no longer open.
     const ids = only ? [only] : open.map((t) => t.tender_id);
     for (const id of ids) {
-      const status = await call<{ questions_waiting: { clarification_id: string }[] }>(client, "get_my_bid_status", { tender_id: id }).catch(() => null);
+      const status = await call<{ questions_waiting: { clarification_id: string; question: string }[] }>(client, "get_my_bid_status", { tender_id: id }).catch(() => null);
       for (const q of status?.questions_waiting ?? []) {
-        await call(client, "answer_clarification", { clarification_id: q.clarification_id, body: p.reply });
+        const body = answer ? await answer(p, q.question) : p.reply;
+        if (!body) {
+          steps.push({ seller: p.name, tenderId: id, action: "skip", detail: `left ${q.clarification_id} to the seller's own agent` });
+          continue;
+        }
+        await call(client, "answer_clarification", { clarification_id: q.clarification_id, body });
         steps.push({ seller: p.name, tenderId: id, action: "answer", detail: q.clarification_id });
       }
     }

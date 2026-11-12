@@ -21,16 +21,16 @@ export function ChannelLinker({ channels, audience = "seller" }: { channels: Row
   return (
     <Panel className="grid content-start gap-4">
       <div className="grid gap-0.5">
-        <h2 className="text-base">{audience === "buyer" ? "Get updates in your chat" : "Get questions in your chat"}</h2>
+        <h2 className="text-base">Run it from Telegram</h2>
         {audience === "buyer" ? (
           <p className="text-sm text-muted">
-            Optional. Hear when a sealed bid arrives (the count only: prices stay sealed until you close bidding), when a bidder answers your
-            question, and when a bidder asks one. Reply to a bidder&apos;s question in the chat to answer every bidder.
+            Optional. New sealed bids (the count only), bidders&apos; questions and your agent&apos;s answers arrive in the chat. Reply to a question to
+            answer every bidder, tap /tenders to sum up or close bidding, or just ask your agent how a tender is going.
           </p>
         ) : (
           <p className="text-sm text-muted">
-            Optional. A tender owner&apos;s question also arrives in the chat you link, and your reply there is recorded exactly like one typed in the
-            inbox. The inbox keeps working either way.
+            Optional. New tenders, your agent&apos;s summaries and tender owners&apos; questions arrive in the chat. Tap /open to let your agent bid
+            or to ask a question, reply to a question to answer it, or just ask your agent how your bids are going.
           </p>
         )}
       </div>

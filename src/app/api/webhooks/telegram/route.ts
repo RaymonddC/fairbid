@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { firstDelivery, forgetDelivery, handleInbound } from "@/lib/channels";
-import { telegramChannel, verifyTelegramSecret } from "@/lib/channels/telegram";
+import { answerTap, inlineKeyboard, telegramChannel, verifyTelegramSecret } from "@/lib/channels/telegram";
 import { log } from "@/lib/log";
 import { createLimiter } from "@/lib/rate-limit";
 
@@ -28,8 +28,12 @@ export async function POST(req: NextRequest) {
   if (!(await firstDelivery(id, "telegram.message"))) return NextResponse.json({ ok: true, duplicate: true });
   try {
     const answer = await handleInbound(msg);
+    // A tapped button spins until it is answered.
+    if (msg.tap) await answerTap(msg.tap.id);
+    if (!answer) return NextResponse.json({ ok: true });
     // Answering in the webhook response saves a second call to Telegram.
-    return NextResponse.json({ method: "sendMessage", chat_id: msg.address, text: answer });
+    const markup = answer.buttons ? inlineKeyboard(answer.buttons) : undefined;
+    return NextResponse.json({ method: "sendMessage", chat_id: msg.address, text: answer.text, ...(markup ? { reply_markup: markup } : {}) });
   } catch (error) {
     log.error("telegram message failed", error);
     await forgetDelivery(id);

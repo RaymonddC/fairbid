@@ -14,7 +14,7 @@ import { log } from "./log";
 import { createPayPalClient, loadConfig, PayPalError, PayPalUnreachableError, type PayPalClient } from "./paypal/client";
 import { isFailedCapture, reasonText } from "./paypal/webhook";
 import { isLastOfPhase, isLive, MAX_DELIVERY_DAYS, nextStep, phaseCount, planMilestones, type HoldState, type MilestoneState } from "./phases";
-import { explainPair, reviewProposals, scoreBlind } from "./ai/roles";
+import { explainPair, reviewFixture, reviewProposals, scoreBlind } from "./ai/roles";
 import { DEMO_QUESTIONS, DEMO_REVIEWED_SCORES, UNREVIEWED, type FixtureQuestion } from "./review-fixture";
 import {
   bidLetter,
@@ -100,31 +100,34 @@ export async function closeBidding(tenderId: string, actor: string) {
     currency,
   );
 
-  // AI review, before the transaction so no database lock waits on the model.
-  // The demo tender keeps its scripted questions: its seeded replies answer them.
+  // AI review, before the transaction so no database lock waits on the model. With the AI
+  // off, the demo tender takes its scripted questions and seeded replies; any other tender
+  // asks every bid about each criterion code cannot score.
   const sellerOfLetter = new Map(bids.map((b) => [letterOf.get(b.id)!, b.sellerId]));
+  const demo = tenderId === DEMO_TENDER_ID;
+  const reviewInput = {
+    title: tender.title,
+    needText: tender.needText,
+    deliveryDays: Number((tender.spec as { deliveryDays?: number })?.deliveryDays ?? 28),
+    criteria: tender.criteria.map((c) => ({ name: c.name, weightPct: c.weightPct, rubric: c.rubric })),
+    bids: bids.map((b) => ({
+      letter: letterOf.get(b.id)!,
+      notes: b.notes,
+      hsCode: b.hsCode,
+      leadTimeDays: b.leadTimeDays,
+      photoCount: Array.isArray(b.photos) ? b.photos.length : 0,
+    })),
+  };
+  const judgedByAi = (name: string) => !["cost", "lead_time", "completeness"].includes(criterionKind(name));
   const [review, reasons] = await Promise.all([
-    tenderId === DEMO_TENDER_ID
-      ? Promise.resolve({ value: DEMO_QUESTIONS, source: "fixture" as const })
-      : reviewProposals(
-          {
-            title: tender.title,
-            needText: tender.needText,
-            deliveryDays: Number((tender.spec as { deliveryDays?: number })?.deliveryDays ?? 28),
-            criteria: tender.criteria.map((c) => ({ name: c.name, weightPct: c.weightPct, rubric: c.rubric })),
-            bids: bids.map((b) => ({
-              letter: letterOf.get(b.id)!,
-              notes: b.notes,
-              hsCode: b.hsCode,
-              leadTimeDays: b.leadTimeDays,
-              photoCount: Array.isArray(b.photos) ? b.photos.length : 0,
-            })),
+    reviewProposals(reviewInput, () => (demo ? [] : reviewFixture(reviewInput, judgedByAi))).then((r): { source: "model" | "fixture"; value: FixtureQuestion[] } =>
+      demo && r.source === "fixture"
+        ? { source: "fixture", value: DEMO_QUESTIONS }
+        : {
+            source: r.source,
+            value: r.value.map((q) => ({ topic: q.topic, question: q.question, sentTo: q.bids.map((l) => sellerOfLetter.get(l)!), replies: [] })),
           },
-          () => [],
-        ).then((r) => ({
-          source: r.source,
-          value: r.value.map((q) => ({ topic: q.topic, question: q.question, sentTo: q.bids.map((l) => sellerOfLetter.get(l)!), replies: [] })),
-        })),
+    ),
     Promise.all(
       pairs.map((p) => {
         const a = bids.find((b) => b.id === p.bidId)!;
@@ -135,8 +138,8 @@ export async function closeBidding(tenderId: string, actor: string) {
   ]);
   const questions: FixtureQuestion[] = review.value;
   const bidOf = (sellerId: string) => bids.find((b) => b.sellerId === sellerId);
-  // The scripted review ran two hours before the demo close, so its seeded replies are already in the past.
-  const asked = new Date(now.getTime() - 2 * 60 * 60_000);
+  // The scripted demo review ran two hours before the close, so its seeded replies are already in the past.
+  const asked = demo && review.source === "fixture" ? new Date(now.getTime() - 2 * 60 * 60_000) : now;
 
   await db.$transaction(async (tx) => {
     await move(tx, tenderId, "OPEN", "CLOSED");

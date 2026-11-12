@@ -5,8 +5,8 @@
 
 import { refresh } from "next/cache";
 import { after } from "next/server";
-import { keysBySellerFromEnv, PERSONAS, runBot } from "@/lib/agents/bots";
-import { scheduleDemoAnswers, scheduleDemoBids, type ScheduleDeps } from "@/lib/agents/demo-schedule";
+import { demoAgentDeps } from "@/lib/agents/demo-deps";
+import { scheduleDemoAnswers, scheduleDemoBids } from "@/lib/agents/demo-schedule";
 import { MAX_BRIEF } from "@/lib/agents/brief";
 import { answerAgentQuestions, recheckAgentsForQuestion, runAgentsForTender, runOwnAgent } from "@/lib/agents/own-agent";
 import { redirect, unstable_rethrow } from "next/navigation";
@@ -16,6 +16,7 @@ import { classifyHs, HS_CONFIDENCE_GATE, HS_FIXTURE, writeTender } from "@/lib/a
 import { createBuyerLinkCode, createLinkCode, unlinkBuyerChannel, unlinkChannel, type LinkOffer } from "@/lib/channels";
 import { createAgentKey, revokeAgentKey, type AgentKeyView } from "@/lib/mcp/agent-keys";
 import { isMessageChannel } from "@/lib/channels/registry";
+import { notifySellersOfNewTender } from "@/lib/channels/seller-notify";
 import { db } from "@/lib/db";
 import { draftFrom } from "@/lib/draft";
 import { resetDemoTender } from "@/lib/demo-reset";
@@ -244,6 +245,8 @@ export async function publishTenderAction(input: TenderInput) {
     const tenderId = await publishTender(input, user.id);
     // Sellers' own agents look at the new tender after the response: a failing agent never slows or breaks publishing.
     after(() => runAgentsForTender(tenderId));
+    // Bidders with a linked chat and no agent on hear of it, with buttons to bid or ask.
+    after(() => notifySellersOfNewTender(tenderId));
     // Demo owners only: the four scripted bidder agents seal their bids one by one over about two minutes.
     after(() => scheduleDemoBids(tenderId, demoAgentDeps(tenderId, user.id)).catch((e) => console.error("[demo-agents] bid schedule failed", e)));
     return { tenderId };
@@ -281,19 +284,6 @@ export async function classifyHsAction(product: string) {
 /** The four scripted bidder agents for one tender, working over MCP, the same public endpoint
  * any bidder's own agent uses. The demo-only gate is in demo-schedule.ts: an owner who is not a
  * demo account gets nothing, so a real tender owner's tender never sees a scripted bid. */
-function demoAgentDeps(tenderId: string, ownerId: string): ScheduleDeps {
-  // This same server on its loopback address. Never an address taken from the request:
-  // a forged Host header would receive the bidder keys.
-  const mcpUrl = `http://127.0.0.1:${process.env.PORT ?? 3000}/api/mcp`;
-  return {
-    ownerId,
-    demoUserIds: DEMO_USERS.map((u) => u.id),
-    keys: keysBySellerFromEnv(process.env.MCP_SELLER_KEYS),
-    runOne: (sellerId, key) => runBot(mcpUrl, key, PERSONAS.find((p) => p.sellerId === sellerId)!, tenderId),
-    isOpen: async () => (await db.tender.findUnique({ where: { id: tenderId }, select: { status: true } }))?.status === "OPEN",
-  };
-}
-
 /** Rebuilds the demo tender for the next run. Leaves other tenders alone. */
 export async function resetDemoAction() {
   return run(async () => {

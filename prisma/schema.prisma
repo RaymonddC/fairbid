@@ -78,6 +78,7 @@ model Tender {
   questions      TenderQuestion[]
   award          Award?
   events         Event[]
+  chatPrompts    ChatPrompt[]
 
   @@index([buyerId])
 }
@@ -474,4 +475,21 @@ model BuyerChannelMessage {
   question TenderQuestion?  @relation(fields: [tenderQuestionId], references: [id], onDelete: Cascade)
 
   @@unique([linkId, externalId])
+}
+
+// A message the bot sent that asks for typed words, such as "Type your question about this
+// tender". A reply to it does what `action` says on `tenderId`. Whose words they are comes
+// from the chat's own link, never from this row.
+model ChatPrompt {
+  id         String      @id @default(uuid())
+  kind       ChannelKind
+  address    String
+  externalId String
+  action     String
+  tenderId   String
+  createdAt  DateTime    @default(now())
+
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, address, externalId])
 }
