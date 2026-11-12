@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusPill } from "@/components/StatusPill";
 import { Panel, SectionTitle, linkButton } from "@/components/ui";
 import { buyerCashflow, sellerCashflow, type UpcomingPayment } from "@/lib/cashflow";
-import { availableChannels, linksOf } from "@/lib/channels";
+import { availableChannels, buyerChannels, buyerLinksOf, linksOf } from "@/lib/channels";
 import { db } from "@/lib/db";
 import { maskAddress } from "@/lib/channels/types";
 import { day, money } from "@/lib/format";
@@ -31,7 +31,7 @@ export default async function Home() {
 // ── Buyer ────────────────────────────────────────────────────────────────────
 
 async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
-  const cf = await buyerCashflow(buyerId);
+  const [cf, links] = await Promise.all([buyerCashflow(buyerId), buyerLinksOf(buyerId)]);
   const active = cf.tenders.filter((t) => t.status !== "COMPLETE" && t.status !== "CANCELLED");
   const done = cf.tenders.filter((t) => t.status === "COMPLETE");
   // One figure per currency in use, never added across currencies: "€3,380 + $500".
@@ -78,6 +78,14 @@ async function BuyerHome({ name, buyerId }: { name: string; buyerId: string }) {
           </Panel>
           <UpcomingPanel items={cf.upcoming} buyer />
         </div>
+
+        <ChannelLinker
+          audience="buyer"
+          channels={buyerChannels().map((c) => {
+            const l = links.find((x) => x.kind === c.kind);
+            return { ...c, linked: l ? maskAddress(c.kind, l.address) : null };
+          })}
+        />
 
         <section className="grid gap-3" aria-labelledby="active-title">
           <SectionTitle id="active-title">Active tenders</SectionTitle>

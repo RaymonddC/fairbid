@@ -48,12 +48,15 @@ export const telegramChannel: Channel = {
   label: "Telegram",
   configured: () => Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET && process.env.TELEGRAM_BOT_USERNAME),
   parseInbound: parseTelegramUpdate,
-  async send(address, text) {
+  async send(address, text, opts) {
+    const expectReply = opts?.expectReply ?? true;
     const res = await fetch(`${API}/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // force_reply opens the reply box on the question, so the answer arrives as a reply to it.
-      body: JSON.stringify({ chat_id: address, text, reply_markup: { force_reply: true, input_field_placeholder: "Your answer" } }),
+      body: JSON.stringify(
+        expectReply ? { chat_id: address, text, reply_markup: { force_reply: true, input_field_placeholder: "Your answer" } } : { chat_id: address, text },
+      ),
       signal: AbortSignal.timeout(6000),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string; result?: { message_id?: number } };

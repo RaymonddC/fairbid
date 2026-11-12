@@ -9,7 +9,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { DEMO_TENDER_ID } from "../../prisma/seed-data";
 import { DEMO_USERS, type Role, type User } from "@/lib/auth";
 import { classifyHs, HS_CONFIDENCE_GATE, HS_FIXTURE, writeTender } from "@/lib/ai/roles";
-import { createLinkCode, unlinkChannel, type LinkOffer } from "@/lib/channels";
+import { createBuyerLinkCode, createLinkCode, unlinkBuyerChannel, unlinkChannel, type LinkOffer } from "@/lib/channels";
 import { createAgentKey, revokeAgentKey, type AgentKeyView } from "@/lib/mcp/agent-keys";
 import { isMessageChannel } from "@/lib/channels/registry";
 import { db } from "@/lib/db";
@@ -113,6 +113,24 @@ export async function unlinkChannelAction(kind: string) {
 }
 
 const linkLimiter = createLimiter(10, 10 * 60_000);
+
+/** The signed-in buyer asks for a one-time code to link a Telegram chat for tender updates. */
+export async function linkBuyerChannelAction(kind: string) {
+  return run<{ offer: LinkOffer }>(async () => {
+    const user = await as("buyer");
+    if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+    if (!linkLimiter.hit(user.id)) throw new StepError("Too many codes requested. Wait a few minutes.");
+    return { offer: await createBuyerLinkCode(user.id, kind) };
+  });
+}
+
+export async function unlinkBuyerChannelAction(kind: string) {
+  return run(async () => {
+    const user = await as("buyer");
+    if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+    await unlinkBuyerChannel(user.id, kind);
+  });
+}
 
 /** The signed-in seller makes a key for their own AI agent. The key comes back once. */
 export async function createAgentKeyAction(label: string) {

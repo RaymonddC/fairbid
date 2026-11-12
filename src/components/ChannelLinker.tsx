@@ -1,47 +1,61 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { linkChannelAction, unlinkChannelAction } from "@/app/actions";
+import { linkBuyerChannelAction, linkChannelAction, unlinkBuyerChannelAction, unlinkChannelAction } from "@/app/actions";
 import type { LinkOffer } from "@/lib/channels";
 import { notifyError, notifySuccess } from "./ActionButton";
 import { Button, Panel, Pill } from "./ui";
 
 type Row = { kind: string; label: string; linked: string | null };
+type Audience = "seller" | "buyer";
 
-/** Lets a seller also receive clarification questions in a chat. Optional: the inbox always works. */
-export function ChannelLinker({ channels }: { channels: Row[] }) {
+const ACTIONS = {
+  seller: { link: linkChannelAction, unlink: unlinkChannelAction },
+  buyer: { link: linkBuyerChannelAction, unlink: unlinkBuyerChannelAction },
+} as const;
+
+/** Lets a seller receive clarification questions in a chat, or a buyer get tender updates.
+ * Optional: the app always works without it. */
+export function ChannelLinker({ channels, audience = "seller" }: { channels: Row[]; audience?: Audience }) {
   if (channels.length === 0) return null;
   return (
     <Panel className="grid content-start gap-4">
       <div className="grid gap-0.5">
-        <h2 className="text-base">Get questions in your chat</h2>
-        <p className="text-sm text-muted">
-          Optional. A buyer&apos;s question also arrives in the chat you link, and your reply there is recorded exactly like one typed in the
-          inbox. The inbox keeps working either way.
-        </p>
+        <h2 className="text-base">{audience === "buyer" ? "Get updates in your chat" : "Get questions in your chat"}</h2>
+        {audience === "buyer" ? (
+          <p className="text-sm text-muted">
+            Optional. Hear when a sealed bid arrives (the count only: prices stay sealed until you close bidding), when a seller answers your
+            question, and when a seller asks one. Reply to a seller&apos;s question in the chat to answer every seller.
+          </p>
+        ) : (
+          <p className="text-sm text-muted">
+            Optional. A buyer&apos;s question also arrives in the chat you link, and your reply there is recorded exactly like one typed in the
+            inbox. The inbox keeps working either way.
+          </p>
+        )}
       </div>
       <ul className="grid gap-4">
         {channels.map((c) => (
-          <ChannelRow key={c.kind} row={c} />
+          <ChannelRow key={c.kind} row={c} audience={audience} />
         ))}
       </ul>
     </Panel>
   );
 }
 
-function ChannelRow({ row }: { row: Row }) {
+function ChannelRow({ row, audience }: { row: Row; audience: Audience }) {
   const [offer, setOffer] = useState<LinkOffer | null>(null);
   const [pending, start] = useTransition();
 
   const link = () =>
     start(async () => {
-      const r = await linkChannelAction(row.kind);
+      const r = await ACTIONS[audience].link(row.kind);
       if (r.ok) setOffer(r.offer);
       else notifyError(r.error);
     });
   const unlink = () =>
     start(async () => {
-      const r = await unlinkChannelAction(row.kind);
+      const r = await ACTIONS[audience].unlink(row.kind);
       if (r.ok) {
         setOffer(null);
         notifySuccess(`${row.label} unlinked`);

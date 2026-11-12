@@ -6,6 +6,8 @@
 import { createHash, randomInt } from "node:crypto";
 import { db } from "../db";
 import { StepError, addReply, isUniqueViolation } from "../workflow";
+import { BUYER_HELP, pickLinkCode, routeInbound } from "./buyer";
+import { answerQuestionFromChat } from "./buyer-notify";
 import { CHANNELS } from "./registry";
 import { telegramLink } from "./telegram";
 import { parseLinkCommand, type InboundMessage, type MessageChannel } from "./types";
@@ -55,21 +57,74 @@ export async function linksOf(sellerId: string) {
   return db.channelLink.findMany({ where: { sellerId }, select: { kind: true, address: true } });
 }
 
+// ── Buyers ───────────────────────────────────────────────────────────────────
+// A buyer links a chat the same way, in tables of its own, so the seller path is unchanged.
+// Telegram only.
+
+/** A fresh one-time code for the signed-in buyer. The previous code stops working. */
+export async function createBuyerLinkCode(accountId: string, kind: MessageChannel): Promise<LinkOffer> {
+  const channel = CHANNELS[kind];
+  if (kind !== "telegram") throw new StepError("Buyers can link Telegram only.");
+  if (!channel.configured()) throw new StepError(`${channel.label} is not switched on for this site.`);
+  const code = newCode();
+  await db.$transaction([
+    db.buyerLinkCode.deleteMany({ where: { accountId, kind } }),
+    db.buyerLinkCode.create({ data: { codeHash: hashCode(code), accountId, kind, expiresAt: new Date(Date.now() + CODE_TTL_MS) } }),
+  ]);
+  return { code, url: telegramLink(code), expiresInMinutes: CODE_TTL_MS / 60_000 };
+}
+
+export async function unlinkBuyerChannel(accountId: string, kind: MessageChannel) {
+  await db.buyerChannelLink.deleteMany({ where: { accountId, kind } });
+  await db.buyerLinkCode.deleteMany({ where: { accountId, kind } });
+}
+
+export async function buyerLinksOf(accountId: string) {
+  return db.buyerChannelLink.findMany({ where: { accountId }, select: { kind: true, address: true } });
+}
+
+/** Channels a buyer can link: Telegram, when it is switched on. */
+export function buyerChannels() {
+  return availableChannels().filter((c) => c.kind === "telegram");
+}
+
 // ── Inbound ──────────────────────────────────────────────────────────────────
 
 const FOLLOW_UP_MS = 10 * 60_000;
 const MAX_ANSWER = 1000; // the limit addReply keeps
 
-const HOW_TO_LINK = "This chat is not linked to a FairBid seller. Sign in to FairBid as a seller, open your dashboard, and press Link on this channel.";
+const HOW_TO_LINK = "This chat is not linked to FairBid. Sign in to FairBid as a seller or a buyer, open your dashboard, and press Link on this channel.";
 
 /** Handles one inbound message and returns the text to answer with. Throws only for
  * failures worth a retry (the database); anything a person caused is answered in words. */
 export async function handleInbound(msg: InboundMessage): Promise<string> {
   const code = parseLinkCommand(msg.text);
-  if (code) return linkChat(msg, code);
-  if (/^\s*\/start(@\w+)?\s*$/i.test(msg.text)) return HOW_TO_LINK;
-
-  const link = await db.channelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } } });
+  const [link, buyerLink] = code
+    ? [null, null]
+    : await Promise.all([
+        db.channelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } } }),
+        db.buyerChannelLink.findUnique({ where: { kind_address: { kind: msg.kind, address: msg.address } } }),
+      ]);
+  // A reply to a message sent to the buyer side of this chat belongs to the buyer, even when
+  // the same chat is also a seller's.
+  const buyerMessage =
+    buyerLink && msg.replyToExternalId
+      ? await db.buyerChannelMessage.findUnique({
+          where: { linkId_externalId: { linkId: buyerLink.id, externalId: msg.replyToExternalId } },
+          select: { tenderQuestionId: true },
+        })
+      : null;
+  const route = routeInbound({
+    linkCode: Boolean(code),
+    bareStart: /^\s*\/start(@\w+)?\s*$/i.test(msg.text),
+    sellerLinked: Boolean(link),
+    buyerLinked: Boolean(buyerLink),
+    repliesToBuyer: buyerMessage,
+  });
+  if (route === "link") return linkChat(msg, code!);
+  if (route === "how-to-link") return HOW_TO_LINK;
+  if (route === "buyer-help") return BUYER_HELP;
+  if (route === "buyer-answer") return answerQuestionFromChat(buyerLink!.accountId, buyerMessage!.tenderQuestionId!, msg.text);
   if (!link) return HOW_TO_LINK;
 
   // The seller used Reply on one of our messages, or has exactly one question waiting.
@@ -120,8 +175,14 @@ async function linkChat(msg: InboundMessage, code: string): Promise<string> {
   if (msg.kind === "whatsapp" && !parseAllowlist(process.env.CHANNEL_ALLOWLIST).has(msg.address)) {
     return "This number is not on the list of numbers that may link in this demo.";
   }
-  const row = await db.channelLinkCode.findUnique({ where: { codeHash: hashCode(code) } });
-  if (!row || row.kind !== msg.kind || row.expiresAt < new Date()) return "That code is not valid or has expired. Press Link again in FairBid for a new one.";
+  const [row, buyerRow] = await Promise.all([
+    db.channelLinkCode.findUnique({ where: { codeHash: hashCode(code) } }),
+    db.buyerLinkCode.findUnique({ where: { codeHash: hashCode(code) } }),
+  ]);
+  const side = pickLinkCode(row, buyerRow, msg.kind);
+  if (!side) return "That code is not valid or has expired. Press Link again in FairBid for a new one.";
+  if (side === "buyer") return linkBuyerChat(msg, buyerRow!);
+  if (!row) return "That code is not valid or has expired. Press Link again in FairBid for a new one.";
   await db.$transaction([
     // A chat belongs to one seller: whoever proves it last holds it.
     db.channelLink.deleteMany({ where: { kind: msg.kind, address: msg.address } }),
@@ -130,6 +191,17 @@ async function linkChat(msg: InboundMessage, code: string): Promise<string> {
     db.channelLinkCode.delete({ where: { codeHash: row.codeHash } }),
   ]);
   return "Linked. Questions from buyers will arrive here. Reply to a question to answer it; the in-app inbox keeps working too.";
+}
+
+async function linkBuyerChat(msg: InboundMessage, row: { codeHash: string; accountId: string }): Promise<string> {
+  await db.$transaction([
+    // A chat belongs to one buyer: whoever proves it last holds it. A seller link to the same chat is untouched.
+    db.buyerChannelLink.deleteMany({ where: { kind: msg.kind, address: msg.address } }),
+    db.buyerChannelLink.deleteMany({ where: { accountId: row.accountId, kind: msg.kind } }),
+    db.buyerChannelLink.create({ data: { accountId: row.accountId, kind: msg.kind, address: msg.address } }),
+    db.buyerLinkCode.delete({ where: { codeHash: row.codeHash } }),
+  ]);
+  return "Linked. Updates on your tenders arrive here: new sealed bids (the count only), answers from sellers, and sellers' questions, which you can answer by replying.";
 }
 
 /** Records that a delivery was handled. False when it was already handled before. */

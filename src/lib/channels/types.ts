@@ -23,8 +23,9 @@ export interface Channel {
   label: string;
   /** True when every setting this channel needs is present. An unconfigured channel is off. */
   configured(): boolean;
-  /** Sends text to an address. Resolves with the channel's id for the sent message. */
-  send(address: string, text: string): Promise<{ externalId: string }>;
+  /** Sends text to an address. Resolves with the channel's id for the sent message.
+   * `expectReply: false` sends an update that needs no answer (default: the reply box opens). */
+  send(address: string, text: string, opts?: { expectReply?: boolean }): Promise<{ externalId: string }>;
   /** Reads the body of a webhook call. Null when it holds no message we act on. */
   parseInbound(payload: unknown): InboundMessage | null;
 }
