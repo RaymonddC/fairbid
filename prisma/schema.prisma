@@ -75,6 +75,7 @@ model Tender {
   criteria       Criterion[]
   bids           Bid[]
   clarifications Clarification[]
+  questions      TenderQuestion[]
   award          Award?
   events         Event[]
 
@@ -102,10 +103,16 @@ model Seller {
   channelKind    ChannelKind @default(inapp)
   channelAddress String?
 
+  // FairBid's own bidding agent for this seller: what they sell, in their words, and whether it bids for them.
+  agentBrief     String?
+  agentOn        Boolean     @default(false)
+  agentUpdatedAt DateTime?
+
   bids         Bid[]
   channelLinks ChannelLink[]
   linkCodes    ChannelLinkCode[]
   agentKeys    AgentKey[]
+  questions    TenderQuestion[]
 }
 
 model Bid {
@@ -358,6 +365,9 @@ model Account {
   detail       String
   passwordHash String
   createdAt    DateTime @default(now())
+
+  channelLinks BuyerChannelLink[]
+  linkCodes    BuyerLinkCode[]
 }
 
 // Hash-chained per tender. See src/lib/audit.ts.
@@ -400,4 +410,68 @@ model TariffRate {
   source        String
 
   @@unique([hsPrefix, destination, origin, effectiveFrom])
+}
+
+// A seller's question about an open tender, asked before bidding (by the seller or their agent).
+// The answer is published to every bidder, never only the one who asked, and the asker stays
+// anonymous to the other sellers. The buyer's AI answers from the tender when it can; otherwise
+// the buyer does. A question never changes the tender, and answers cannot reveal a bid.
+model TenderQuestion {
+  id         String    @id @default(uuid())
+  tenderId   String
+  sellerId   String
+  question   String
+  answer     String?
+  // "ai" when the buyer's AI answered from the tender, "buyer" when the buyer wrote it.
+  answeredBy String?
+  askedAt    DateTime  @default(now())
+  answeredAt DateTime?
+
+  tender          Tender                @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  seller          Seller                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  channelMessages BuyerChannelMessage[]
+
+  @@index([tenderId])
+}
+
+// A buyer's linked chat (Telegram), kept apart from sellers' links so the seller path is unchanged.
+// A chat belongs to one buyer account: the last to prove it holds it.
+model BuyerChannelLink {
+  id        String      @id @default(uuid())
+  accountId String
+  kind      ChannelKind
+  address   String
+  linkedAt  DateTime    @default(now())
+
+  account  Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messages BuyerChannelMessage[]
+
+  @@unique([accountId, kind])
+  @@unique([kind, address])
+}
+
+// A one-time code a signed-in buyer sends from the chat to link it. Only a sha256 is stored.
+model BuyerLinkCode {
+  codeHash  String      @id
+  accountId String
+  kind      ChannelKind
+  expiresAt DateTime
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, kind])
+}
+
+// A message sent to a buyer's chat, so a reply to it finds the seller question it answers.
+model BuyerChannelMessage {
+  id               String   @id @default(uuid())
+  linkId           String
+  tenderQuestionId String?
+  externalId       String
+  sentAt           DateTime @default(now())
+
+  link     BuyerChannelLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  question TenderQuestion?  @relation(fields: [tenderQuestionId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, externalId])
 }
