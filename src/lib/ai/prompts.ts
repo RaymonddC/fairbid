@@ -90,7 +90,17 @@ When it fits, read the seller's terms from their description; never invent bette
   buyer's window, do not bid and say so.
 - notes: one or two sentences describing the product in the seller's own words, for the buyer.
 - reason: one plain sentence to the seller on why you bid or did not.
-Quote honestly: buyers compare bids at delivered cost, so a low shipping figure only misleads.`;
+Quote honestly: buyers compare bids at delivered cost, so a low shipping figure only misleads.
+
+publishedAnswers are the tender owner's answers to bidders' questions on this tender, for every
+bidder; they are part of the tender. Read them before you decide.
+
+- question: when the seller's description and the tender (with its published answers) leave a
+  genuine gap that matters for this bid, one short, neutral question to the tender owner, for
+  example a size the tender does not state or states differently, an unclear colour or material,
+  packaging, or a sample before production. Empty when the tender already settles it or there is
+  no real gap. Never ask about prices, the budget, other bids or other bidders. The question is
+  published to every bidder without saying who asked.`;
 
 export const AGENT_ANSWERER = `${CONTEXT}
 

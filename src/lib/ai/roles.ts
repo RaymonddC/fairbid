@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { clampDraft, draftFrom, type Draft } from "../draft";
 import { runRole, type AiResult, type UserPart } from "./model";
-import { answerFromBrief, MAX_BRIEF, planFromBrief, type AgentPlan, type BriefTender } from "../agents/brief";
+import { answerFromBrief, MAX_BRIEF, planFromBrief, questionFromBrief, type AgentPlan, type BriefTender } from "../agents/brief";
 import {
   AGENT_ANSWERER,
   BLIND_SCORER,
@@ -293,21 +293,50 @@ export const AgentBidSchema = z.object({
   fees: z.number(),
   leadTimeDays: z.number(),
   notes: z.string(),
+  /** One short question to the tender owner for a gap the tender leaves; empty when none. */
+  question: z.string().optional(),
 });
 
 const toCents = (units: number) => Math.round(units * 100);
 const FIXTURE_MARK = "__fixture__";
 
+/** A question and its published answer on the tender, as every bidder sees it. */
+export interface PublishedAnswer {
+  question: string;
+  answer: string;
+}
+
+/** The agent's plan for a tender and, when the tender leaves a gap, one question for its owner. */
+export interface AgentPlanWithQuestion {
+  plan: AgentPlan;
+  question: string | null;
+}
+
+// A question about money or other bidders is never the agent's to ask.
+const OFF_LIMITS = /\b(price|prices|cost|budget|discount|cheaper|other (?:bids?|bidders?|sellers?)|competitors?|how many (?:bids?|bidders?|sellers?))\b/i;
+
+/** Pure: the model's question, tidied, or null when it is empty, too short or long, or off limits. */
+export function tidyAgentQuestion(raw: unknown): string | null {
+  const q = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : "";
+  if (q.length < 10 || q.length > 300 || OFF_LIMITS.test(q)) return null;
+  return q;
+}
+
 /** Whether a seller's brief fits a tender, and the bid if it does. The model reads the brief;
- * code multiplies the unit price by the quantity and checks every amount and the window. */
-export async function planAgentBid(brief: string, tender: BriefTender): Promise<AiResult<AgentPlan>> {
+ * code multiplies the unit price by the quantity and checks every amount and the window.
+ * Published answers on the tender are part of what the agent reads. */
+export async function planAgentBid(brief: string, tender: BriefTender, answers: PublishedAnswer[] = []): Promise<AiResult<AgentPlanWithQuestion>> {
   const text = brief.trim().slice(0, MAX_BRIEF);
-  const fixture = (): AiResult<AgentPlan> => ({ value: planFromBrief(text, tender), source: "fixture" });
+  const published = answers.flatMap((a) => [a.question, a.answer]);
+  const fixture = (): AiResult<AgentPlanWithQuestion> => ({
+    value: { plan: planFromBrief(text, tender), question: questionFromBrief(text, tender, published) },
+    source: "fixture",
+  });
   const r = await runRole(
     {
       role: "seller_agent",
       system: SELLER_AGENT,
-      user: JSON.stringify({ sellerDescription: text, tender }, null, 1),
+      user: JSON.stringify({ sellerDescription: text, tender, publishedAnswers: answers }, null, 1),
       schema: AgentBidSchema,
       effort: "low",
     },
@@ -316,23 +345,29 @@ export async function planAgentBid(brief: string, tender: BriefTender): Promise<
   );
   if (r.source === "fixture") return fixture();
   const v = r.value;
+  const question = tidyAgentQuestion(v.question);
   const reason = v.reason.trim().slice(0, 300) || "Not a fit for what you make.";
-  if (!v.bid) return { value: { kind: "skip", reason }, source: "model" };
+  if (!v.bid) return { value: { plan: { kind: "skip", reason }, question }, source: "model" };
   const quantity = Math.max(1, Math.round(tender.quantity));
   const unit = toCents(v.unitPrice);
   const window = Math.max(1, Math.round(tender.deliveryDays));
   const lead = Math.round(v.leadTimeDays);
   // An answer that breaks a rule code can check is not trusted: the deterministic plan decides instead.
   if (!(unit > 0) || !(v.shipping >= 0) || !(v.fees >= 0) || !(lead >= 1)) return fixture();
-  if (lead > window) return { value: { kind: "skip", reason: `You need about ${lead} days; the buyer wants delivery within ${window}.` }, source: "model" };
+  if (lead > window) {
+    return { value: { plan: { kind: "skip", reason: `You need about ${lead} days; the tender owner wants delivery within ${window}.` }, question }, source: "model" };
+  }
   return {
     value: {
-      kind: "bid",
-      goodsCents: unit * quantity,
-      shippingCents: toCents(v.shipping),
-      feesCents: toCents(v.fees),
-      leadTimeDays: lead,
-      notes: (v.notes.trim() || text).slice(0, 500),
+      plan: {
+        kind: "bid",
+        goodsCents: unit * quantity,
+        shippingCents: toCents(v.shipping),
+        feesCents: toCents(v.fees),
+        leadTimeDays: lead,
+        notes: (v.notes.trim() || text).slice(0, 500),
+      },
+      question,
     },
     source: "model",
   };

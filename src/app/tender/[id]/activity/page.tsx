@@ -162,6 +162,14 @@ function describe(
       return { title: `A seller's FairBid agent answered for bid ${letterOf(p.bidId)}`, detail: "From the seller's own description; an answer cannot change a price." };
     case "agent.deferred":
       return { title: "A seller's FairBid agent left a question for the seller to answer" };
+    // Who asked stays hidden: the question itself is the "A bidder asked a question" line.
+    case "agent.asked":
+      return { title: "A bidder's agent asked a question", detail: "The question and its answer go to every bidder, without who asked." };
+    case "agent.rechecked":
+      return {
+        title: p.outcome === "replaced" ? "A bidder's agent read an answer and replaced its sealed bid" : "A bidder's agent read an answer",
+        detail: "The price stays hidden until bidding closes.",
+      };
     default:
       return { title: kind };
   }
@@ -213,7 +221,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     {e.actor === "paypal" && <span className="text-xs text-dye">Reported by PayPal&apos;s webhook, not written by FairBid</span>}
                   </span>
                   <span className="ref grid text-[11px] text-faint sm:text-right">
-                    <span>{e.actor}</span>
+                    {/* An agent's actor names its bidder: shown as "agent" so a question cannot be traced to who asked. */}
+                    <span>{e.actor.startsWith("agent:") ? "agent" : e.actor}</span>
                     <span>{e.hash.slice(0, 10)}</span>
                   </span>
                 </li>
