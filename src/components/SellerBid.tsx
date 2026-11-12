@@ -128,7 +128,7 @@ const copy = {
 
 const euros = (cents: number | undefined) => (cents === undefined ? "" : String(Math.round(cents / 100)));
 
-export function SellerBid({ t }: { t: SellerTenderView }) {
+export function SellerBid({ t, qa }: { t: SellerTenderView; qa?: React.ReactNode }) {
   const eur = moneyFor(t.currency);
   // Field labels name the tender's currency: (EUR) or (USD).
   const cur = (label: string) => label.replace("(EUR)", `(${t.currency})`);
@@ -300,6 +300,7 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
             )}
           </Panel>
 
+          {qa}
           <Panel className="grid gap-5">
             <h2 className="text-lg">{c.title}</h2>
             {!t.open && mine && !t.won && !t.debrief && <p className="rounded-lg bg-dye-soft p-3 text-sm">{c.sealedClosed(dayTime(mine.submittedAt))}</p>}

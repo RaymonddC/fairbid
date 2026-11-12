@@ -18,6 +18,7 @@ import { resetDemoTender } from "@/lib/demo-reset";
 import { createLimiter } from "@/lib/rate-limit";
 import { DEMO_QUESTIONS, SIMULATED_REPLY, SIMULATED_REPLY_GENERIC } from "@/lib/review-fixture";
 import { getUser } from "@/lib/session";
+import { answerTenderQuestion, askTenderQuestion } from "@/lib/tender-questions";
 import {
   StepError,
   addReply,
@@ -82,6 +83,22 @@ export async function simulateReplyAction(clarificationId: string, bidId: string
 
 export async function askQuestionAction(tenderId: string, question: string, bidIds: string[]) {
   return run(async () => askQuestion(tenderId, question, bidIds, (await owner(tenderId)).id));
+}
+
+/** The signed-in seller asks the buyer a question on an open tender. Every seller sees the answer. */
+export async function askBuyerAction(tenderId: string, question: string) {
+  return run(async () => {
+    const user = await as("seller");
+    return { question: await askTenderQuestion({ tenderId: String(tenderId), sellerId: user.sellerId!, question: String(question), via: "seller" }) };
+  });
+}
+
+/** The signed-in buyer answers a seller's question on their own tender, for every seller. */
+export async function answerSellerQuestionAction(questionId: string, answer: string) {
+  return run(async () => {
+    const user = await as("buyer");
+    return { question: await answerTenderQuestion({ questionId: String(questionId), buyerAccountId: user.id, answer: String(answer) }) };
+  });
 }
 
 export async function sellerReplyAction(clarificationId: string, body: string) {
