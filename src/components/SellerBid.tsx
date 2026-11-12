@@ -8,13 +8,11 @@ import type { SellerTenderView } from "@/lib/views";
 import { PageHeader } from "./PageHeader";
 import { PhotoPicker, PhotoStrip } from "./Photos";
 import { Button, Panel, Pill } from "./ui";
-import { Debrief, criterionName, type Lang } from "./Debrief";
+import { Debrief } from "./Debrief";
 
 type HsState = { code: string; description: string; confidence: number; alternatives: { hsCode: string; description: string }[]; gate: number };
 
-// Sari works in Indonesian; the buyer side stays in English. Only the seller screen switches.
 const copy = {
-  en: {
     title: "Your bid",
     lead: "Buyers compare every bid at the price delivered to their door, so an honest all-in price is the one that counts.",
     closes: "Closes",
@@ -50,7 +48,6 @@ const copy = {
     ifWin: "If you win, PayPal pays you",
     sealedClosed: (at: string) => `Sealed ${at}. Bidding has closed and the buyer is comparing delivered costs. The result will show here.`,
     waitingFor: (n: number) => (n === 1 ? "1 question is waiting for your answer." : `${n} questions are waiting for your answer.`),
-    addPhoto: "Add photo",
     deadline: (d: string) => `Delivery deadline counted from the close: ${d}.`,
     within: (b: string) => `Within the ${b} budget`,
     over: (b: string) => `Over the ${b} budget`,
@@ -68,63 +65,9 @@ const copy = {
     lapsed: (n: number) => `The buyer's hold for phase ${n} lapsed before it was paid. Wait for a new hold before you go on.`,
     ended: "The buyer ended the order here. What was paid is yours; nothing more is due.",
     deposit: "non-refundable deposit",
-  },
-  id: {
-    title: "Penawaran Anda",
-    lead: "Pembeli membandingkan setiap penawaran dengan harga sampai di tempat mereka, jadi harga jujur yang sudah termasuk semuanya yang menang.",
-    closes: "Ditutup",
-    closed: "Penawaran ditutup",
-    scored: "Dinilai dari",
-    early: "Menawar lebih dulu tidak menambah nilai.",
-    refPhotos: "Foto referensi dari pembeli",
-    selling: "Apa yang Anda jual?",
-    hsCode: "Kode HS (bea cukai)",
-    confirmed: "Sudah dikonfirmasi",
-    right: "Ini sudah benar",
-    photos: "Foto produk Anda",
-    photosHint: "Tunjukkan produk aslinya: utuh, close-up hasil kerja, dan label atau kemasan. Minimal satu foto.",
-    price: (q: number) => `Harga untuk ${q} buah (EUR)`,
-    each: "per buah",
-    ship: "Ongkos kirim sampai tujuan (EUR)",
-    shipHint: "Sampai ke pintu, semua rute",
-    fees: "Biaya broker dan dokumen (EUR)",
-    feesHint: "Dibayar pembeli saat impor; dihitung supaya penawaran adil dibandingkan",
-    days: "Lama pengiriman (hari)",
-    window: (d: number) => `Pembeli butuh dalam ${d} hari`,
-    late: (d: number) => `Lewat ${d} hari dari batas pembeli: nilai waktu kirim jadi 0`,
-    seal: "Segel dan kirim penawaran",
-    reseal: "Perbarui penawaran tersegel",
-    sealedAt: (at: string) => `Disegel ${at}. Tidak ada yang bisa melihat harga atau foto Anda sebelum penawaran ditutup.`,
-    preview: "Yang dibandingkan pembeli",
-    goods: "Barang",
-    shipping: "Ongkos kirim",
-    duty: "Bea masuk",
-    feesLine: "Biaya broker",
-    delivered: "Total sampai tujuan",
-    paid: "Dibayar ke Anda lewat PayPal",
-    ifWin: "Jika menang, PayPal membayar Anda",
-    sealedClosed: (at: string) => `Disegel ${at}. Penawaran sudah ditutup dan pembeli sedang membandingkan biaya sampai tujuan. Hasilnya akan muncul di sini.`,
-    waitingFor: (n: number) => `${n} pertanyaan menunggu jawaban Anda.`,
-    addPhoto: "Tambah foto",
-    deadline: (d: string) => `Batas pengiriman dihitung dari penutupan: ${d}.`,
-    within: (b: string) => `Masih di bawah anggaran ${b}`,
-    over: (b: string) => `Melebihi anggaran ${b}`,
-    vatNote: "PPN impor ditanggung pembeli dan ditampilkan terpisah.",
-    questions: "Pertanyaan dari pembeli",
-    none: "Tidak ada pertanyaan untuk Anda.",
-    answer: "Jawaban Anda",
-    send: "Kirim jawaban",
-    locked: "Harga Anda terkunci. Jawaban tidak bisa mengubahnya.",
-    won: "Anda memenangkan tender ini",
-    paidSoFar: "Sudah dibayar ke Anda",
-    phase: (n: number, of: number) => `Tahap ${n} dari ${of}`,
-    heldNow: (amount: string) => `${amount} sedang ditahan PayPal untuk Anda.`,
-    waitHold: (n: number) => `Tahap ${n} belum ditahan. Mulai pekerjaannya setelah pembeli menahan dananya: akan terlihat di sini.`,
-    lapsed: (n: number) => `Penahanan dana tahap ${n} oleh pembeli habis sebelum dibayar. Tunggu penahanan baru sebelum melanjutkan.`,
-    ended: "Pembeli menghentikan pesanan di sini. Yang sudah dibayar milik Anda; tidak ada lagi yang jatuh tempo.",
-    deposit: "uang muka, tidak dikembalikan",
-  },
 };
+
+const c = copy;
 
 const euros = (cents: number | undefined) => (cents === undefined ? "" : String(Math.round(cents / 100)));
 
@@ -132,8 +75,6 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
   const eur = moneyFor(t.currency);
   // Field labels name the tender's currency: (EUR) or (USD).
   const cur = (label: string) => label.replace("(EUR)", `(${t.currency})`);
-  const [lang, setLang] = useState<Lang>("en");
-  const c = copy[lang];
   const mine = t.myBid;
   const waiting = t.questions.filter((q) => !q.myReply).length;
   const [total, setTotal] = useState(euros(mine?.goodsCents));
@@ -171,11 +112,11 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
   const budget = eur(t.budgetCents);
 
   const blocker = !hsConfirmed
-    ? lang === "en" ? "Confirm the customs code first." : "Konfirmasi kode HS dulu."
+    ? "Confirm the customs code first."
     : !goods || shipping === "" || lead <= 0
-      ? lang === "en" ? "Fill in your price, shipping and days to deliver." : "Isi harga, ongkos kirim, dan lama pengiriman."
+      ? "Fill in your price, shipping and days to deliver."
       : photos.length === 0
-        ? lang === "en" ? "Add at least one photo." : "Tambahkan minimal satu foto."
+        ? "Add at least one photo."
         : null;
 
   const seal = () =>
@@ -190,8 +131,8 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
         hsCode: hs.code,
         photos,
       });
-      setMessage(r.ok ? { ok: true, text: c.sealedAt(lang === "en" ? "just now" : "barusan") } : { ok: false, text: r.error });
-      if (r.ok) notifySuccess([lang === "en" ? "Bid sealed" : "Penawaran tersegel", c.sealedAt(lang === "en" ? "just now" : "barusan")]);
+      setMessage(r.ok ? { ok: true, text: c.sealedAt("just now") } : { ok: false, text: r.error });
+      if (r.ok) notifySuccess(["Bid sealed", c.sealedAt("just now")]);
       else notifyError(r.error);
     });
 
@@ -207,28 +148,13 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
   );
 
   return (
-    <div lang={lang}>
+    <div>
       <PageHeader
-        crumbs={[{ href: "/", label: lang === "en" ? "Open tenders" : "Tender terbuka" }]}
+        crumbs={[{ href: "/", label: "Open tenders" }]}
         title={t.title}
         description={c.lead}
         sheet
         reference={`Ref ${t.id.split("-").pop()!.slice(-6)}`}
-        actions={
-          <div className="flex rounded-lg bg-surface p-1 text-sm ring-1 ring-inset ring-line" role="group" aria-label="Language">
-            {(["en", "id"] as const).map((l) => (
-              <button
-                key={l}
-                onClick={() => setLang(l)}
-                aria-pressed={lang === l}
-                lang={l}
-                className={`min-h-10 rounded-md px-3 font-medium transition-colors ${lang === l ? "bg-dye-soft text-dye" : "text-muted hover:text-ink"}`}
-              >
-                {l === "en" ? "English" : "Bahasa Indonesia"}
-              </button>
-            ))}
-          </div>
-        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -275,13 +201,13 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
           )}
           {t.debrief && (
             <Panel className="grid gap-3" featured>
-              <Debrief d={t.debrief} lang={lang} />
+              <Debrief d={t.debrief} />
             </Panel>
           )}
 
           <Panel className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <p className="max-w-[60ch] text-sm" lang="en">
+              <p className="max-w-[60ch] text-sm">
                 {t.needText}
               </p>
               <Pill tone={t.open ? "dye" : "plain"} dot={t.open}>
@@ -290,7 +216,7 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
             </div>
             <p className="text-sm text-muted">
               {t.spec.quantity} × {t.spec.item}, {t.spec.deliverTo}, {t.spec.deliveryDays} days. {c.scored}{" "}
-              {t.criteria.map((cr) => `${criterionName(cr.name, lang)} ${cr.weightPct}%`).join(", ")}. {c.early}
+              {t.criteria.map((cr) => `${cr.name.toLowerCase()} ${cr.weightPct}%`).join(", ")}. {c.early}
             </p>
             {t.photos.length > 0 && (
               <div className="grid gap-2 border-t border-line pt-3">
@@ -328,8 +254,8 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
                       {hsConfirmed
                         ? c.confirmed
                         : hs.confidence < hs.gate
-                          ? lang === "en" ? "Unsure: pick the code" : "Kurang yakin: pilih kodenya"
-                          : `${Math.round(hs.confidence * 100)}% ${lang === "en" ? "sure" : "yakin"}`}
+                          ? "Unsure: pick the code"
+                          : `${Math.round(hs.confidence * 100)}% sure`}
                     </Pill>
                     {!hsConfirmed && (
                       <button type="button" onClick={() => setHsConfirmed(true)} className="ml-auto min-h-11 px-1 font-medium text-dye underline underline-offset-4">
@@ -339,7 +265,7 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
                   </div>
                   <div className={`flex flex-wrap items-center gap-2 ${t.open ? "" : "hidden"}`}>
                     <button type="button" onClick={classify} disabled={classifying} className="min-h-9 rounded-md px-1 text-xs font-medium text-dye underline underline-offset-4 disabled:opacity-60">
-                      {classifying ? (lang === "en" ? "Checking…" : "Memeriksa…") : lang === "en" ? "Check the code for what I wrote" : "Periksa kode untuk produk saya"}
+                      {classifying ? "Checking…" : "Check the code for what I wrote"}
                     </button>
                     {hs.alternatives.map((a) => (
                       <button
@@ -359,7 +285,7 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
               </div>
 
               {t.open ? (
-                <PhotoPicker photos={photos} onChange={setPhotos} label={c.photos} hint={c.photosHint} addLabel={c.addPhoto} />
+                <PhotoPicker photos={photos} onChange={setPhotos} label={c.photos} hint={c.photosHint} />
               ) : (
                 photos.length > 0 && (
                   <div className="grid gap-2">
@@ -435,15 +361,13 @@ export function SellerBid({ t }: { t: SellerTenderView }) {
   );
 }
 
-/** A published criterion in the seller's language. The kinds the code scores have fixed names; a reviewed criterion
- * keeps the buyer's own words unless it is one we know. */
-function Question({ q, c }: { q: SellerTenderView["questions"][number]; c: (typeof copy)["en"] }) {
+function Question({ q, c }: { q: SellerTenderView["questions"][number]; c: typeof copy }) {
   const [reply, setReply] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="grid gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0">
-      <p className="rounded-lg bg-canvas p-3 text-sm" lang="en">
+      <p className="rounded-lg bg-canvas p-3 text-sm">
         {q.question}
       </p>
       {q.myReply ? (

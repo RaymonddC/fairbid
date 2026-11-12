@@ -3,10 +3,11 @@
 import { Toaster as Sonner } from "sonner";
 
 /** Success and failure notices for every action that changes something. Styled with
- * the app's tokens, so it follows light and dark mode. Errors stay longer. */
+ * the app's dark tokens. Errors stay longer. */
 export function Toaster() {
   return (
     <Sonner
+      theme="dark"
       position="bottom-right"
       closeButton
       duration={4500}

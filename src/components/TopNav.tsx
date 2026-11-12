@@ -7,7 +7,6 @@ import { signInAction, signOutAction } from "@/app/login/actions";
 import { DEMO_USERS, type User } from "@/lib/auth";
 import { Avatar } from "./Avatar";
 import { LogoMark } from "./Logo";
-import { ThemeToggle } from "./ThemeToggle";
 
 type Tab = { href: string; label: string; active: (path: string) => boolean };
 
@@ -68,9 +67,6 @@ export function TopNav({ user }: { user: User | null }) {
             <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden="true" />
             PayPal sandbox
           </span>
-          <div className={user ? "hidden sm:block" : ""}>
-            <ThemeToggle compact />
-          </div>
           {user && (
             <>
               <span className="hidden h-6 w-px bg-line sm:block" aria-hidden="true" />
@@ -166,10 +162,6 @@ function AccountMenu({ user }: { user: User }) {
               Sign out
             </button>
           </form>
-          <div className="mt-1 grid gap-2 border-t border-line px-2.5 pb-1.5 pt-2.5 sm:hidden">
-            <span className="text-xs text-faint">Theme</span>
-            <ThemeToggle />
-          </div>
           <p className="border-t border-line px-2.5 pb-1.5 pt-2.5 text-xs leading-relaxed text-muted">
             Money is held by PayPal until each step is confirmed. FairBid never holds funds.
           </p>

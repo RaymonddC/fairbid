@@ -3,7 +3,6 @@ import { DEMO_USERS } from "@/lib/auth";
 import { AuthPanel } from "./AuthPanel";
 import { LogoMark } from "./Logo";
 import { TenderSheet } from "./TenderSheet";
-import { ThemeToggle } from "./ThemeToggle";
 
 /** Staggers the page-load entrance: `--i` is the element's place in the order. */
 const order = (i: number) => ({ "--i": i }) as CSSProperties;
@@ -43,11 +42,7 @@ export function AuthPage({ initial, next }: { initial: "login" | "register"; nex
       </aside>
 
       <div className="flex flex-col px-5 pb-4 pt-3 sm:px-10 sm:pb-8 lg:min-h-dvh lg:px-14 lg:py-3">
-        {/* On a phone the theme follows the system, which keeps the form on one screen. */}
-        <div className="auth-rise mb-4 hidden justify-end sm:flex short:mb-1" style={order(1)}>
-          <ThemeToggle compact />
-        </div>
-        {/* On a roomy desktop the form sits on a slip of the same paper as the tender sheet. */}
+        {/* On a roomy desktop the form sits on its own slip. */}
         <div
           className="auth-rise m-auto w-full max-w-[420px] roomy:max-w-[468px] roomy:rounded-[3px] roomy:border roomy:border-line roomy:bg-[var(--slip)] roomy:px-7 roomy:py-7 roomy:shadow-[0_1px_2px_rgb(15_18_34/0.08),0_6px_14px_-8px_rgb(15_18_34/0.18)]"
           style={order(3)}

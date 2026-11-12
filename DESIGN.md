@@ -6,33 +6,34 @@ Claude sessions) look like one product. The tokens live in `src/app/globals.css`
 
 ## 1. Feel
 
-A working tool for a small buyer and an overseas seller. A tender is paperwork, so the app looks like paperwork:
-sheets of warm paper with sharp corners on a warm desk, a print serif for headings, ruled notes and ledgers instead
-of rows of KPI cards, and one ink stamp for the decision. Not a generic SaaS dashboard: no glows, no gradients, few
-pills. Indigo night, not grey, in dark mode. Money and states are the content, so
-they get the contrast; chrome stays quiet. Motion only shows what changed.
+A working tool for a small buyer and an overseas seller. The app is dark only: indigo night, not grey. There is no
+light theme and no theme switch. A tender is paperwork, so the app looks like paperwork: sheets with sharp corners on
+a dark desk, a print serif for headings, ruled notes and ledgers instead of rows of KPI cards, and one ink stamp for
+the decision. The one light thing is the paper tender sheet on the sign-in page, lying on the indigo desk. Not a
+generic SaaS dashboard: no glows, no gradients, few pills. Money and states are the content, so they get the
+contrast; chrome stays quiet. Motion only shows what changed. All copy is English.
 
 ## 2. Colour roles
 
-Use the token, never the hex. Every token has a light and a dark value, so a hard-coded colour breaks one theme.
+Use the token, never the hex. The tokens hold the one dark theme (`:root` in `globals.css`, `color-scheme: dark`).
 
-| Token | Light | Role |
+| Token | Value | Role |
 |---|---|---|
-| `canvas` | `#f4f1ea` | The page: the desk the papers lie on |
-| `surface` | `#fffdf8` | Paper: cards (`Panel`), inputs, menus |
-| `raised` | `#f9f6ef` | A surface inside a surface |
-| `ink` | `#0f1222` | Body text |
-| `muted` | `#565c70` | Labels, secondary lines |
-| `faint` | `#62687c` | Small print. The lightest text allowed (4.9:1 on the desk) |
-| `line`, `line-strong` | `#e6e0d4`, `#d3cbbb` | Hairlines; borders of secondary buttons |
-| `dye` (+ `-hover`, `-soft`) | `#2e3fa3` | Indigo, Sari's dye: the primary action, links, focus, the winning bid |
-| `brand` | `#2e3fa3` | The logo tile only. Same in both themes |
-| `sun` (+ `-soft`) | `#e3a72f` | Turmeric: the logo seal, and money still held |
-| `ok` | `#1b7a4b` | Paid, done, inside budget |
-| `warn` | `#8a5800` | Needs the person: waiting, late, over budget |
-| `flag` | `#b2381f` | Wrong or suspicious: collusion flags, errors, destructive actions |
-| `duty` | `#d0901e` | Duty in cost bars |
-| `chart-1`, `chart-2` | `#4a5bc4`, `#b7791f` | Paid to sellers; still held. Checked with the dataviz palette checks |
+| `canvas` | `#0b0e1a` | The page: the desk the sheets lie on |
+| `surface` | `#121628` | A sheet: cards (`Panel`), inputs, menus |
+| `raised` | `#171c31` | A surface inside a surface |
+| `ink` | `#eceef6` | Body text |
+| `muted` | `#a0a6bc` | Labels, secondary lines |
+| `faint` | `#8a91ab` | Small print. The faintest text allowed (5.7:1 on the surface) |
+| `line`, `line-strong` | `#232842`, `#323856` | Hairlines; borders of secondary buttons |
+| `dye` (+ `-hover`, `-soft`) | `#8c9bff` | Indigo, Sari's dye: the primary action, links, focus, the winning bid |
+| `brand` | `#2e3fa3` | The logo tile only |
+| `sun` (+ `-soft`) | `#f0b94a` | Turmeric: the logo seal, and money still held |
+| `ok` | `#4cc38a` | Paid, done, inside budget |
+| `warn` | `#e8b04b` | Needs the person: waiting, late, over budget |
+| `flag` | `#f07a5f` | Wrong or suspicious: collusion flags, errors, destructive actions |
+| `duty` | `#e3a43a` | Duty in cost bars |
+| `chart-1`, `chart-2` | `#7484ea`, `#b98022` | Paid to sellers; still held |
 
 Each semantic colour has a `-soft` wash for backgrounds; put the strong colour on text over its own wash.
 Keep `flag` for what is wrong, never decoration.
@@ -91,7 +92,6 @@ Don't:
 
 ## 8. Prompt for an agent
 
-"Build it in FairBid's system: tokens from `globals.css` (canvas page, white `Panel` cards with a hairline and soft
-shadow, indigo `dye` for the one primary action and links, `ok` / `warn` / `flag` only for meaning), IBM Plex Sans with
+"Build it in FairBid's system: tokens from `globals.css` (dark only: canvas page, `Panel` sheets with a hairline, indigo `dye` for the one primary action and links, `ok` / `warn` / `flag` only for meaning), IBM Plex Sans with
 tabular figures for money, Newsreader for headings, IBM Plex Mono for IDs, `Button` / `Pill` / `SectionTitle` from `ui.tsx`, sentence case,
-labels that say what happens, works at 375px and in dark mode."
+labels that say what happens, works at 375px."

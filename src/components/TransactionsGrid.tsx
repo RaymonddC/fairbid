@@ -12,7 +12,7 @@ import { Pill } from "./ui";
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 const theme = themeQuartz.withParams({
-  browserColorScheme: "inherit",
+  browserColorScheme: "dark",
   accentColor: "var(--dye)",
   backgroundColor: "var(--surface)",
   borderColor: "var(--line)",
