@@ -34,7 +34,7 @@ export const DraftSchema = z.object({
 
 export async function writeTender(need: string): Promise<AiResult<Draft>> {
   const r = await runRole(
-    { role: "tender_writer", system: TENDER_WRITER, user: `The buyer wrote:\n\n${need}`, schema: DraftSchema, effort: "low" },
+    { role: "tender_writer", system: TENDER_WRITER, user: `The tender owner wrote:\n\n${need}`, schema: DraftSchema, effort: "low" },
     () => draftFrom(need),
   );
   // Whatever the model said, the draft is brought inside the limits the server enforces.
@@ -258,7 +258,7 @@ export function answerFromTender(question: string, t: PublishedTender): BuyerAns
   }
   if (/criteri|scor(e|ed|ing)|weight|judg|evaluat|\brank/.test(q)) {
     const list = t.criteria.map((c) => `${c.name} ${c.weightPct}%`).join(", ");
-    return list ? { answerable: true, answer: `Bids are scored on ${list}. Cost is compared at the price delivered to the buyer's door.` } : NOT_ANSWERABLE;
+    return list ? { answerable: true, answer: `Bids are scored on ${list}. Cost is compared at the price delivered to the tender owner's door.` } : NOT_ANSWERABLE;
   }
   if (/budget|how much|maximum price|max price|spend/.test(q)) {
     return { answerable: true, answer: `The published budget is ${units(t.budgetCents, t.currency)} for the whole order. Bids are compared at delivered cost.` };
@@ -475,7 +475,7 @@ export async function summarizeForOwner(tenderTitle: string, questions: Conversa
 
 export const AgentAnswerSchema = z.object({ answerable: z.boolean(), answer: z.string() });
 
-/** A buyer's question answered from the seller's brief, or null to leave it for the seller. */
+/** A buyer's question answered from the bidder's brief, or null to leave it for the seller. */
 export async function answerFromSellerBrief(brief: string, question: string): Promise<AiResult<string | null>> {
   const text = brief.trim().slice(0, MAX_BRIEF);
   const r = await runRole(

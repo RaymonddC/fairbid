@@ -1,4 +1,4 @@
-// The pure half of FairBid's own seller agent: reading a seller's brief ("what do you
+// The pure half of FairBid's own bidder agent: reading a bidder's brief ("what do you
 // make and sell?") and, without the AI, deciding whether a tender fits it and what to bid.
 // Nothing here touches the database or the network, so it is tested directly.
 // Money is integer cents.
@@ -151,7 +151,7 @@ export function planFromBrief(brief: string, tender: BriefTender): AgentPlan {
   const window = Math.max(1, Math.round(tender.deliveryDays));
   const leadTimeDays = facts.leadDays ?? Math.min(DEFAULT_LEAD_DAYS, window);
   if (leadTimeDays > window) {
-    return { kind: "skip", reason: `You need about ${leadTimeDays} days; the buyer wants delivery within ${window}.` };
+    return { kind: "skip", reason: `You need about ${leadTimeDays} days; the tender owner wants delivery within ${window}.` };
   }
   return {
     kind: "bid",

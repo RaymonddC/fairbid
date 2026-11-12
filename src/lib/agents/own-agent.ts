@@ -7,7 +7,7 @@
 // and the seller's own form call, so it is sealed and checked exactly like theirs, and an
 // answer goes through addReply, which can never change a price. Every step is signed in the
 // event log as agent:<sellerId>, the actor MCP agent bids carry. Sealed prices never go in
-// the log: the panel reads the seller's own bid for the amount.
+// the log: the panel reads the bidder's own bid for the amount.
 
 import { appendEvent } from "../audit-store";
 import {
