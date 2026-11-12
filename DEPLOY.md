@@ -97,7 +97,7 @@ The roles run on Gemini through Vertex AI. The service signs in as its own servi
 
 ## Seller agents
 
-The four demo agents sign in to `/api/mcp` with the keys in the `fairbid-mcp-seller-keys` secret. On an open tender, the demo buyer's **Invite seller agents** button runs them inside the service; it is not offered to registered accounts. To run them from a terminal instead:
+The four demo agents sign in to `/api/mcp` with the keys in the `fairbid-mcp-seller-keys` secret. When the demo tender owner publishes a tender, the service runs them on it by itself, one bid every 20 to 30 seconds, and lets them answer their questions after close; registered accounts never get them. With the secret empty the service logs `[demo-agents] ... MCP_SELLER_KEYS is empty` and skips them. To run them from a terminal instead:
 
 ```bash
 MCP_SELLER_KEYS="$(gcloud secrets versions access latest --secret=fairbid-mcp-seller-keys)" npm run bots -- --url <service url>/api/mcp

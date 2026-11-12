@@ -70,7 +70,7 @@ A buyer can close bidding before the published deadline (R's call, 8 Nov 2026). 
 
 ## Scripted seller agents are for the demo accounts only
 
-"Invite seller agents" adds four scripted sellers to a tender. That shows MCP agents working, but on a real buyer's tender it would put fake bids next to real ones. So only the shared demo accounts can invite them, on tenders they own (R's call, 8 Nov 2026); the server refuses anyone else (`inviteAgentsAction`), and the button is not shown to them. Every bid an agent seals is signed `agent:<seller>` in the event log. A real seller's own agent can still bid on any open tender through `/api/mcp` with that seller's key.
+Four scripted bidder agents bid on a tender a demo tender owner publishes, one by one over about two minutes, and answer their questions within a minute of close (`src/lib/agents/demo-schedule.ts`; no button, 12 Nov 2026). That shows MCP agents working, but on a real tender owner's tender it would put fake bids next to real ones. So they run only on tenders owned by the shared demo accounts (R's call, 8 Nov 2026): the schedule checks the owner from the session against `DEMO_USERS` and does nothing for anyone else. They do not add bids to the seeded demo tender, which has its four. Every bid an agent seals is signed `agent:<seller>` in the event log. A real seller's own agent can still bid on any open tender through `/api/mcp` with that seller's key.
 
 ## Sellers make their own agent keys
 

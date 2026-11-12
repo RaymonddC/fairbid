@@ -21,7 +21,7 @@ For recording the video and for a live demo. Target: under 3 minutes.
 | 0:35 | As Sari: **Your agent** | Sari writes one paragraph: what she makes, her price per piece, shipping, how fast. She ticks **Bid for me automatically** and presses **Look at open tenders now**. |
 | 0:50 | Same page, "What your agent did" | Her agent skipped the mugs, lampshades, coffee and teak boards (not her product), asked the tender owner a question where the tender left something out, and sealed bids on the batik tenders from her own prices. Nobody sees a price before close. |
 | 1:10 | As Anna: that batik tender | The bid count went up; the price stays sealed. Under **Bidders' questions**, her AI already answered what the tender settles; the answer goes to every bidder, and nobody is told who asked. (Telegram: the same question and the new sealed bid reached Anna's phone; a reply there answers every bidder.) |
-| 1:25 | Demo tender, **Close bidding now** | Every bid opens at once. The AI review sends the same question to every bid with the same gap. Sari's agent answers from her description; **Let bidder agents answer** brings in the others, and traders B and C send the same sentence. |
+| 1:25 | Demo tender, **Close bidding now** | Every bid opens at once. The AI review sends the same question to every bid with the same gap. Sari's agent answers from her description; within a minute the other bidder agents answer on their own, and traders B and C send the same sentence. |
 | 1:50 | **Compare**, **Delivered cost** | Duty, VAT and fees reorder the bids: the lowest quote is over budget. B and C are flagged: prices 0.4% apart, the same text; a flag asks a person to look and removes nothing. The AI scored handmade proof blind, with a reason; code ranked the bids. |
 | 2:15 | **Award and pay** | Anna awards Sari and agrees the first 30% is a non-refundable deposit. PayPal holds EUR 2,540 in Anna's account with Sari as the payee; FairBid never touches the money. **Pay** the first step. |
 | 2:35 | **AI** page | Everything the AI did on this tender, from the tamper-checked log: drafted, asked, scored blind, explained the flags. Code ranked; Anna decided. |
@@ -35,7 +35,7 @@ For recording the video and for a live demo. Target: under 3 minutes.
 | The AI answers look scripted | The key is missing or a call failed. The flow still works; say "scripted for the demo" or turn the key on (DEPLOY.md) |
 | PayPal says "did not answer in time" | Press the same button again. Every money call has an idempotency key, so a repeat never pays twice |
 | PayPal refuses the award, payee invalid | `SELLER_D_PAYPAL_EMAIL` is wrong or empty. Fix it, then **Reset demo** |
-| Invite bidder agents fails | Run them from a terminal (DEPLOY.md, "Seller agents"), or skip to the demo tender: its four bids are already in |
+| No scripted bids arrive within two minutes of publishing | `MCP_SELLER_KEYS` is empty or wrong (the service log says so, `[demo-agents]`). Run them from a terminal (DEPLOY.md, "Seller agents"), or skip to the demo tender: its four bids are already in |
 | The demo tender is in a strange state | **Reset demo** |
 | No PayPal line appears in the log after a payment | PayPal delivers within seconds, sometimes a minute. Say nothing; FairBid's own line is already there. If it never comes, `PAYPAL_WEBHOOK_ID` is missing or stale (DEPLOY.md) |
 | A payment shows "PayPal is holding" | Sandbox eCheck or a review. Nothing is wrong: the step is recorded as pending and completes when PayPal reports back. Move on |
