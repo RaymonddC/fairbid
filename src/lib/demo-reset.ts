@@ -8,6 +8,7 @@ import { DEMO_BIDS, DEMO_CRITERIA, DEMO_SELLERS, DEMO_TARIFFS, DEMO_TENDER } fro
 import { DEMO_PHOTOS } from "../../prisma/demo-photos";
 import { ensureDemoAccounts } from "./accounts";
 import { ensureDemoHistory } from "./demo-history";
+import { ensureDemoOpenTenders } from "./demo-open";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -34,6 +35,8 @@ export async function resetDemoTender(db: PrismaClient): Promise<void> {
   }
   // Earlier, finished tenders for the cash-flow history. Created once, never reset.
   await ensureDemoHistory(db);
+  // Open tenders from the demo buyer, reopened for a week, so sellers and agents have choices.
+  await ensureDemoOpenTenders(db);
   // Tenders from before accounts existed could only have been posted by the demo buyer.
   await db.tender.updateMany({ where: { buyerId: null }, data: { buyerId: "buyer-anna" } });
   await ensureDemoAccounts(db);
