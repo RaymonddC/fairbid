@@ -61,7 +61,7 @@ function firstMoney(text: string, pattern: RegExp): number | null {
 export function parseBrief(brief: string): BriefFacts {
   const t = brief.toLowerCase().replace(/ /g, " ");
   const unitCents =
-    firstMoney(t, new RegExp(`${MONEY}\\s*(?:each|apiece|a piece|per (?:piece|pc|unit|item|one|set|pair)|/\\s*(?:piece|pc|pcs|unit|item))`, "i")) ??
+    firstMoney(t, new RegExp(`${MONEY}\\s*(?:each|apiece|a piece|per (?:piece|pc|unit|item|one|set|pair|kg|kilo|metre|meter)|/\\s*(?:piece|pc|pcs|unit|item|kg))`, "i")) ??
     firstMoney(t, new RegExp(`(?:each|per (?:piece|pc|unit|item))\\s*(?:at|for|costs?|is)?\\s*${MONEY}`, "i"));
   const shippingCents = firstMoney(
     t,
@@ -94,18 +94,33 @@ const STOP = new Set(
 /** Lowercase content words, crude singulars, no numbers. */
 export function words(text: string): string[] {
   return (text.toLowerCase().match(/[a-zà-ÿ]+/g) ?? [])
+    .map((w) => (w.length > 5 && w.endsWith("rves") ? `${w.slice(0, -3)}f` : w))
     .map((w) => (w.length > 4 && w.endsWith("ies") ? `${w.slice(0, -3)}y` : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w))
     .filter((w) => w.length > 2 && !STOP.has(w));
 }
 
-/** Whether the brief names what the tender buys: its head noun, or two of its words. */
-export function matchesBrief(brief: string, tender: Pick<BriefTender, "item" | "title">): { match: boolean; shared: string[] } {
+/** Whether the brief names what the tender buys: its head noun ("napkins" in "Handmade batik napkins, 40 cm").
+ * Shared adjectives alone (batik, cotton) are not enough: a napkin maker does not make scarves. */
+export function matchesBrief(brief: string, tender: Pick<BriefTender, "item" | "title">): { match: boolean; shared: string[]; head: string | null } {
   const have = new Set(words(brief));
-  const item = words(tender.item);
+  const item = words(tender.item.split(/[,(;]/)[0] ?? "");
   const wanted = item.length ? item : words(tender.title);
   const shared = [...new Set(wanted.filter((w) => have.has(w)))];
-  const head = wanted[wanted.length - 1];
-  return { match: (head !== undefined && have.has(head)) || shared.length >= 2, shared };
+  const head = wanted[wanted.length - 1] ?? null;
+  return { match: head !== null && have.has(head), shared, head };
+}
+
+/** The price per piece for one product of several: from the phrase that names it
+ * ("runners €14 each, scarves €9 each"), else the first price in the brief. */
+export function unitPriceFor(brief: string, head: string | null): number | null {
+  if (head) {
+    for (const clause of brief.split(/[,;.!?]\s+|\n+/)) {
+      if (!words(clause).includes(head)) continue;
+      const unit = parseBrief(clause).unitCents;
+      if (unit !== null) return unit;
+    }
+  }
+  return parseBrief(brief).unitCents;
 }
 
 /** The seller's product line for the bid: the brief's first sentence, in their words. */
@@ -123,14 +138,16 @@ export const DEFAULT_LEAD_DAYS = 21;
 export function planFromBrief(brief: string, tender: BriefTender): AgentPlan {
   const text = brief.trim();
   if (!text) return { kind: "skip", reason: "Your description is empty." };
-  const { match } = matchesBrief(text, tender);
-  if (!match) return { kind: "skip", reason: `Not something you make: your description does not mention ${tender.item.toLowerCase() || "this item"}.` };
+  const { match, head } = matchesBrief(text, tender);
+  const what = (tender.item.split(/[,(;]/)[0] ?? "").trim().toLowerCase() || "this item";
+  if (!match) return { kind: "skip", reason: `Not something you make (your description does not mention ${what}).` };
   const facts = parseBrief(text);
-  if (facts.unitCents === null || facts.unitCents <= 0) {
+  const unitCents = unitPriceFor(text, head);
+  if (unitCents === null || unitCents <= 0) {
     return { kind: "skip", reason: "Your description gives no price per piece, for example \"€7.50 each\"." };
   }
   const quantity = Math.max(1, Math.round(tender.quantity));
-  const goodsCents = facts.unitCents * quantity;
+  const goodsCents = unitCents * quantity;
   const window = Math.max(1, Math.round(tender.deliveryDays));
   const leadTimeDays = facts.leadDays ?? Math.min(DEFAULT_LEAD_DAYS, window);
   if (leadTimeDays > window) {

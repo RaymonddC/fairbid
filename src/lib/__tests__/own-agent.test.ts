@@ -33,6 +33,9 @@ describe("parseBrief", () => {
     const f = parseBrief("Rattan baskets, 12 EUR per piece. Freight €180, broker fees €35. Ready in 10 days.");
     assert.deepEqual(f, { unitCents: 1200, shippingCents: 18_000, feesCents: 3500, leadDays: 10 });
   });
+  it("reads a price per kilo", () => {
+    assert.equal(parseBrief("Green arabica coffee beans, $8.20 per kg.").unitCents, 820);
+  });
   it("leaves out what the brief does not say", () => {
     assert.deepEqual(parseBrief("We weave baskets."), { unitCents: null, shippingCents: null, feesCents: null, leadDays: null });
   });
@@ -50,6 +53,11 @@ describe("matchesBrief", () => {
   it("does not match something else that is also handmade", () => {
     assert.equal(matchesBrief(SARI, { item: "Handmade rattan baskets", title: "60 rattan baskets" }).match, false);
   });
+  it("does not match on shared materials alone: a napkin maker does not make scarves", () => {
+    assert.equal(matchesBrief(SARI, { item: "Hand-stamped cotton batik scarves", title: "500 batik scarves" }).match, false);
+    assert.equal(matchesBrief("Batik scarves, €9 each.", { item: "Hand-stamped cotton batik scarves", title: "500 batik scarves" }).match, true);
+    assert.equal(matchesBrief("Arabica coffee beans, €8 per kg.", { item: "Green arabica coffee beans, washed (kg)", title: "300 kg" }).match, true);
+  });
 });
 
 describe("planFromBrief", () => {
@@ -62,6 +70,13 @@ describe("planFromBrief", () => {
       leadTimeDays: 21,
       notes: "Hand-stamped cotton batik napkins, 40 x 40 cm, about €7.50 each.",
     });
+  });
+  it("prices each product from the phrase that names it", () => {
+    const brief = "Batik table runners and scarves. Table runners about €14 each, scarves about €9 each. Ready in 4 weeks, shipping €300, document fees €40.";
+    const p = planFromBrief(brief, { title: "500 scarves", needText: "", item: "Hand-stamped cotton batik scarves", quantity: 500, deliveryDays: 42 });
+    assert.equal(p.kind === "bid" && p.goodsCents, 450_000);
+    assert.equal(p.kind === "bid" && p.feesCents, 4000);
+    assert.equal(p.kind === "bid" && p.leadTimeDays, 28);
   });
   it("skips what the seller does not make", () => {
     const p = planFromBrief(SARI, { ...NAPKINS, title: "60 rattan baskets", item: "Rattan baskets", quantity: 60 });
