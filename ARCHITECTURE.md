@@ -11,7 +11,7 @@ One Next.js app owns all state and secrets. Screens use server components and se
 | `src/lib/audit.ts` | Hash chain and verification. Pure |
 | `src/lib/audit-store.ts` | Writes events to Postgres under a row lock |
 | `src/lib/paypal/` | The only code that talks to PayPal |
-| `src/lib/channels/` | Telegram and WhatsApp: the `Channel` interface, parsing and signature checks (pure), sending, linking a chat, turning an inbound message into `addReply` |
+| `src/lib/channels/` | Telegram: the `Channel` interface, parsing and signature checks (pure), sending, linking a chat, turning an inbound message into `addReply` |
 | `src/lib/session*.ts` | Signed session cookie |
 | `src/proxy.ts` | Login gate and per-request CSP nonce |
 | `prisma/` | Schema, migrations, seed |

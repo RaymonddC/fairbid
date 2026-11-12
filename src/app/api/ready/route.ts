@@ -66,13 +66,16 @@ export async function GET() {
         ? "Easyship lookup on: each bid's duty rate is checked for its code and country of origin."
         : 'EASYSHIP_TOKEN is not set, so bids are priced on seeded rates, marked "borrowed" (DEPLOY.md, "Duty rates").',
     },
-    // Optional extras, so never critical: the in-app inbox works without them.
-    ...Object.values(CHANNELS).map((c) => ({
+    // Optional extras, so never critical: the in-app inbox works without them. WhatsApp is switched off on
+    // purpose (DECISIONS.md), so it is only listed once someone turns it on with WHATSAPP_ENABLED=true.
+    ...Object.values(CHANNELS)
+      .filter((c) => c.kind !== "whatsapp" || process.env.WHATSAPP_ENABLED === "true")
+      .map((c) => ({
       name: `channel_${c.kind}`,
       ok: c.configured(),
       critical: false,
       detail: c.configured() ? "Configured." : `${c.label} is off: its settings are not all set (DEPLOY.md, "Message channels").`,
-    })),
+      })),
   ];
   const ready = checks.every((check) => check.ok || !check.critical);
   return NextResponse.json({ ready, checks }, { status: ready ? 200 : 503 });
