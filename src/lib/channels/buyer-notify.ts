@@ -5,7 +5,6 @@
 // Imports no workflow code, because the workflow calls this file.
 
 import { after } from "next/server";
-import { appendEvent } from "../audit-store";
 import { db } from "../db";
 import { log } from "../log";
 import { bidLetter } from "../scoring";
@@ -85,14 +84,13 @@ export async function answerQuestionFromChat(accountId: string, tenderQuestionId
   const answer = text.trim();
   if (!answer) return "Write the answer as a reply to the question.";
   if (answer.length > MAX_ANSWER) return `Keep the answer under ${MAX_ANSWER} characters, or answer in FairBid.`;
-  const q = await db.tenderQuestion.findUnique({ where: { id: tenderQuestionId }, select: { tenderId: true, answer: true, tender: { select: { buyerId: true } } } });
-  if (!q || q.tender.buyerId !== accountId) return "That question is not on one of your tenders.";
-  if (q.answer) return "That question is already answered. Every seller sees the answer in FairBid.";
-  const done = await db.tenderQuestion.updateMany({
-    where: { id: tenderQuestionId, answer: null },
-    data: { answer, answeredBy: "buyer", answeredAt: new Date() },
-  });
-  if (done.count === 0) return "That question is already answered. Every seller sees the answer in FairBid.";
-  await appendEvent(q.tenderId, accountId, "question.answered", { questionId: tenderQuestionId, answeredBy: "buyer", channel: "telegram" });
-  return "Thank you. Your answer is published to every seller on this tender.";
+  // The same answer path as the website: owner check, still open, first answer wins, logged.
+  // Loaded here, not at the top, because tender-questions imports this file.
+  const { answerTenderQuestion } = await import("../tender-questions");
+  try {
+    await answerTenderQuestion({ questionId: tenderQuestionId, buyerAccountId: accountId, answer });
+    return "Thank you. Your answer is published to every seller on this tender.";
+  } catch (error) {
+    return error instanceof Error ? error.message : "That answer could not be saved. Answer in FairBid instead.";
+  }
 }

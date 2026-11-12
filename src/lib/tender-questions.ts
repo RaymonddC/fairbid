@@ -10,6 +10,7 @@
 
 import { answerAsBuyer, type PublishedTender } from "./ai/roles";
 import { appendEvent } from "./audit-store";
+import { inBackground, notifyBuyerOfSellerQuestion } from "./channels/buyer-notify";
 import { db } from "./db";
 import { log } from "./log";
 import { StepError } from "./workflow";
@@ -82,13 +83,12 @@ export function publish(row: Row, viewerSellerId?: string): PublishedQuestion {
 }
 
 /**
- * Hook: called whenever a question waits for the buyer because their AI could not answer
- * it from the tender. Does nothing yet; a channel (for example Telegram) can tell the
- * buyer from here. It must never throw into the seller's request, and it never gets the
- * seller's identity.
+ * Called whenever a question waits for the buyer because their AI could not answer it from
+ * the tender: tells the buyer in their linked chat, in the background, so it never slows or
+ * fails the seller's request. It never gets the seller's identity.
  */
 export async function onQuestionWaitingForBuyer(question: WaitingQuestion): Promise<void> {
-  void question;
+  inBackground(() => notifyBuyerOfSellerQuestion(question.tenderId, question.id, question.question));
 }
 
 const isOpen = (t: { status: string; closesAt: Date }) => t.status === "OPEN" && new Date() < t.closesAt;
