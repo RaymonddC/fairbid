@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { closeBiddingAction, inviteAgentsAction } from "@/app/actions";
+import { closeBiddingAction } from "@/app/actions";
 import { countryName, dayTime, moneyFor } from "@/lib/format";
 import { atLeast, type BidView, type TenderView } from "@/lib/views";
 import { ActionButton } from "./ActionButton";
@@ -11,7 +11,7 @@ import { Panel, Pill, SectionTitle, linkButton } from "./ui";
 // Shared column template so the header row and the bid rows line up.
 const OPEN_COLS = "sm:grid-cols-[minmax(0,1fr)_100px_140px]";
 
-export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: boolean; qa?: React.ReactNode }) {
+export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: false | "all" | "answer"; qa?: React.ReactNode }) {
   const eur = moneyFor(t.currency);
   const questions = t.clarifications.length;
 
@@ -89,16 +89,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
                 </ActionButton>
               )}
               <p className="text-xs text-faint">Closing before the deadline is allowed, and the activity log shows it with the published deadline.</p>
-              {agents && (
-                <ActionButton
-                  action={() => inviteAgentsAction(t.id)}
-                  variant="secondary"
-                  busy="Bidder agents are bidding…"
-                  success={["Bidder agents have bid", "Four bidder agents read your tender over MCP and sealed their bids."]}
-                >
-                  Invite bidder agents
-                </ActionButton>
-              )}
+              {agents === "all" && <p className="text-xs text-faint">Demo: four bidder agents bid on your tender within about two minutes.</p>}
             </>
           ) : atLeast(t.status, "SCORED") ? (
             // Scored or later: the next step is forward, never back to the questions.
@@ -132,16 +123,7 @@ export function SealedBids({ t, agents = false, qa }: { t: TenderView; agents?: 
               <Link href={`/tender/${t.id}/review`} className={linkButton.primary}>
                 {questions ? `See the ${questions} questions` : "See the review"}
               </Link>
-              {agents && t.waitingReplies > 0 && (
-                <ActionButton
-                  action={() => inviteAgentsAction(t.id)}
-                  variant="secondary"
-                  busy="Bidder agents are answering…"
-                  success={["Bidder agents answered", "Their replies are with the questions. No price changed."]}
-                >
-                  Let bidder agents answer
-                </ActionButton>
-              )}
+              {agents && t.waitingReplies > 0 && <p className="text-xs text-faint">Demo: bidder agents answer their questions within a minute.</p>}
               <Link
                 href={`/tender/${t.id}/compare`}
                 className="inline-flex min-h-11 items-center justify-center text-sm text-muted underline underline-offset-4 hover:text-ink"

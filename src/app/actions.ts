@@ -5,7 +5,8 @@
 
 import { refresh } from "next/cache";
 import { after } from "next/server";
-import { keysBySellerFromEnv, runBots } from "@/lib/agents/bots";
+import { keysBySellerFromEnv, PERSONAS, runBot } from "@/lib/agents/bots";
+import { scheduleDemoAnswers, scheduleDemoBids, type ScheduleDeps } from "@/lib/agents/demo-schedule";
 import { MAX_BRIEF } from "@/lib/agents/brief";
 import { answerAgentQuestions, recheckAgentsForQuestion, runAgentsForTender, runOwnAgent } from "@/lib/agents/own-agent";
 import { redirect, unstable_rethrow } from "next/navigation";
@@ -19,7 +20,6 @@ import { db } from "@/lib/db";
 import { draftFrom } from "@/lib/draft";
 import { resetDemoTender } from "@/lib/demo-reset";
 import { createLimiter } from "@/lib/rate-limit";
-import { DEMO_QUESTIONS, SIMULATED_REPLY, SIMULATED_REPLY_GENERIC } from "@/lib/review-fixture";
 import { getUser } from "@/lib/session";
 import { answerTenderQuestion, askTenderQuestion } from "@/lib/tender-questions";
 import {
@@ -70,28 +70,22 @@ async function run<T extends object>(fn: () => Promise<T | void>): Promise<Resul
 
 export async function closeBiddingAction(tenderId: string) {
   return run(async () => {
-    await closeBidding(tenderId, (await owner(tenderId)).id);
+    const user = await owner(tenderId);
+    await closeBidding(tenderId, user.id);
     // The review may have sent questions: sellers' own agents answer what their brief covers.
     after(() => answerAgentQuestions(tenderId));
+    // Demo owners only: the scripted bidder agents answer theirs within a minute.
+    after(() => scheduleDemoAnswers(tenderId, demoAgentDeps(tenderId, user.id)).catch((e) => console.error("[demo-agents] answer schedule failed", e)));
   });
 }
 
 /** Demo only: a trader who has not answered yet replies now. */
-export async function simulateReplyAction(clarificationId: string, bidId: string) {
-  return run(async () => {
-    const c = await db.clarification.findUnique({ where: { id: clarificationId }, select: { question: true, tenderId: true } });
-    if (!c) throw new StepError("Question not found.");
-    const user = await owner(c.tenderId);
-    // The scripted handmade question gets the coordinated traders' identical line; anything else a neutral yes.
-    const body = c?.question === DEMO_QUESTIONS[0].question ? SIMULATED_REPLY : SIMULATED_REPLY_GENERIC;
-    await addReply(clarificationId, bidId, body, user.id);
-  });
-}
-
 export async function askQuestionAction(tenderId: string, question: string, bidIds: string[]) {
   return run(async () => {
-    await askQuestion(tenderId, question, bidIds, (await owner(tenderId)).id);
+    const user = await owner(tenderId);
+    await askQuestion(tenderId, question, bidIds, user.id);
     after(() => answerAgentQuestions(tenderId));
+    after(() => scheduleDemoAnswers(tenderId, demoAgentDeps(tenderId, user.id)).catch((e) => console.error("[demo-agents] answer schedule failed", e)));
   });
 }
 
@@ -246,9 +240,12 @@ export async function submitBidAction(tenderId: string, input: BidInput) {
 
 export async function publishTenderAction(input: TenderInput) {
   return run(async () => {
-    const tenderId = await publishTender(input, (await as("buyer")).id);
+    const user = await as("buyer");
+    const tenderId = await publishTender(input, user.id);
     // Sellers' own agents look at the new tender after the response: a failing agent never slows or breaks publishing.
     after(() => runAgentsForTender(tenderId));
+    // Demo owners only: the four scripted bidder agents seal their bids one by one over about two minutes.
+    after(() => scheduleDemoBids(tenderId, demoAgentDeps(tenderId, user.id)).catch((e) => console.error("[demo-agents] bid schedule failed", e)));
     return { tenderId };
   });
 }
@@ -281,23 +278,20 @@ export async function classifyHsAction(product: string) {
   });
 }
 
-/** Demo: the four seller agents work this tender over MCP, the same public endpoint any
- * seller's own agent would use. They bid while it is open and answer questions after. */
-export async function inviteAgentsAction(tenderId: string) {
-  return run(async () => {
-    const user = await owner(tenderId);
-    // The four agents are scripted: they belong in the demo, never in a real buyer's bids.
-    if (!DEMO_USERS.some((u) => u.id === user.id)) throw new StepError("Bidder agents are a demo feature, for the demo accounts only.");
-    const keys = keysBySellerFromEnv(process.env.MCP_SELLER_KEYS);
-    if (keys.size === 0) throw new StepError("No bidder agents are set up here: MCP_SELLER_KEYS is empty.");
-    // The agents call this same server on its loopback address. Never an address taken
-    // from the request: a forged Host header would receive the seller keys.
-    const steps = await runBots(`http://127.0.0.1:${process.env.PORT ?? 3000}/api/mcp`, keys, tenderId);
-    const failed = steps.filter((s) => s.action === "error");
-    if (failed.length === steps.length && failed.length > 0) throw new StepError(`The bidder agents could not reach the tender: ${failed[0].detail}`);
-    if (!steps.some((s) => s.action === "bid" || s.action === "answer")) throw new StepError("The bidder agents had nothing to do: each has already bid and answered.");
-    return { bids: steps.filter((s) => s.action === "bid").length, answers: steps.filter((s) => s.action === "answer").length };
-  });
+/** The four scripted bidder agents for one tender, working over MCP, the same public endpoint
+ * any bidder's own agent uses. The demo-only gate is in demo-schedule.ts: an owner who is not a
+ * demo account gets nothing, so a real tender owner's tender never sees a scripted bid. */
+function demoAgentDeps(tenderId: string, ownerId: string): ScheduleDeps {
+  // This same server on its loopback address. Never an address taken from the request:
+  // a forged Host header would receive the bidder keys.
+  const mcpUrl = `http://127.0.0.1:${process.env.PORT ?? 3000}/api/mcp`;
+  return {
+    ownerId,
+    demoUserIds: DEMO_USERS.map((u) => u.id),
+    keys: keysBySellerFromEnv(process.env.MCP_SELLER_KEYS),
+    runOne: (sellerId, key) => runBot(mcpUrl, key, PERSONAS.find((p) => p.sellerId === sellerId)!, tenderId),
+    isOpen: async () => (await db.tender.findUnique({ where: { id: tenderId }, select: { status: true } }))?.status === "OPEN",
+  };
 }
 
 /** Rebuilds the demo tender for the next run. Leaves other tenders alone. */
